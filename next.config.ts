@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // Hide the Next.js dev-mode indicator overlay in development.
+  // It never appears in production builds regardless.
+  devIndicators: false,
 };
 
 export default nextConfig;

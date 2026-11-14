@@ -8,7 +8,7 @@ export function Hero() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="relative grid overflow-hidden rounded-2xl lg:grid-cols-2">
           {/* Left: forest green text panel */}
-          <div className="relative flex flex-col justify-center bg-forest px-6 py-12 sm:px-10 sm:py-16 lg:px-14 lg:py-20">
+          <div className="relative flex flex-col justify-center bg-forest px-6 py-10 sm:px-10 sm:py-12 lg:px-14 lg:py-14">
             {/* soft leaf shadow decoration */}
             <div
               className="pointer-events-none absolute inset-0 opacity-20"
@@ -33,7 +33,7 @@ export function Hero() {
                 Discover premium skincare, makeup and beauty essentials made
                 for your natural glow. Because you deserve the best.
               </p>
-              <div className="mt-7 flex flex-wrap items-center gap-3">
+              <div className="mt-6">
                 <a
                   href="#best-sellers"
                   className="inline-flex items-center gap-2 rounded-full bg-blush px-6 py-3 text-sm font-semibold text-forest transition-transform hover:scale-[1.03] hover:bg-blush-light"
@@ -41,46 +41,16 @@ export function Hero() {
                   Shop Now
                   <ArrowRight size={16} />
                 </a>
-                <a
-                  href="#categories"
-                  className="inline-flex items-center gap-2 rounded-full border border-white/30 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-                >
-                  Explore Categories
-                </a>
-              </div>
-
-              {/* trust mini stats */}
-              <div className="mt-9 flex items-center gap-6">
-                <div>
-                  <p className="font-serif text-2xl font-bold text-white">200K+</p>
-                  <p className="text-[11px] uppercase tracking-wider text-cream/60">
-                    Happy Customers
-                  </p>
-                </div>
-                <div className="h-9 w-px bg-white/20" />
-                <div>
-                  <p className="font-serif text-2xl font-bold text-white">4.9★</p>
-                  <p className="text-[11px] uppercase tracking-wider text-cream/60">
-                    Avg Rating
-                  </p>
-                </div>
-                <div className="h-9 w-px bg-white/20" />
-                <div>
-                  <p className="font-serif text-2xl font-bold text-white">100%</p>
-                  <p className="text-[11px] uppercase tracking-wider text-cream/60">
-                    Authentic
-                  </p>
-                </div>
               </div>
             </div>
           </div>
 
           {/* Right: hero image */}
-          <div className="relative min-h-[320px] overflow-hidden bg-forest sm:min-h-[420px] lg:min-h-[560px]">
+          <div className="relative min-h-[280px] overflow-hidden bg-forest sm:min-h-[340px] lg:min-h-[420px]">
             <img
               src="/images/hero-beauty.png"
               alt="Woman with radiant glowing skin holding a pink peony"
-              className="h-full w-full object-cover object-center"
+              className="absolute inset-0 h-full w-full object-cover object-center"
               loading="eager"
             />
             {/* gradient blend from green into the photo on the left edge */}
@@ -88,13 +58,13 @@ export function Hero() {
               className="pointer-events-none absolute inset-0 lg:bg-gradient-to-r lg:from-forest lg:via-forest/30 lg:to-transparent"
               aria-hidden="true"
             />
-            {/* handwritten script accent */}
-            <div className="absolute right-5 top-6 rotate-3 text-right">
-              <p className="font-script text-2xl text-white drop-shadow sm:text-3xl">
+            {/* handwritten script accent — placed mid-hero over the image */}
+            <div className="absolute left-1/2 top-[28%] -translate-x-1/2 rotate-[-4deg] text-center sm:left-[55%]">
+              <p className="font-script text-3xl text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:text-4xl">
                 Glow Naturally
               </p>
-              <p className="mt-0.5 text-center text-blush">
-                <Heart size={16} className="inline fill-blush" />
+              <p className="mt-1 text-blush">
+                <Heart size={18} className="inline fill-blush drop-shadow" />
               </p>
             </div>
 
@@ -115,7 +85,7 @@ export function Hero() {
             </div>
 
             {/* dots */}
-            <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 lg:left-[45%]">
+            <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
               <span className="h-1.5 w-6 rounded-full bg-white" />
               <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
               <span className="h-1.5 w-1.5 rounded-full bg-white/50" />

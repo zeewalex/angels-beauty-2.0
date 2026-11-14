@@ -1,616 +1,343 @@
-# Angels Beauty — Full-Stack Architecture Proposal & Development Roadmap
+# Angels Beauty — Full-Stack Architecture (Revised)
 
-**Status:** Draft for client review and approval — **do not begin Phase 1 Task 2 or any backend development until approved.**
-**Date:** November 2024
-**Prepared by:** Zai (build lead)
-
----
-
-## 1. Executive summary
-
-This document proposes the complete architecture for the new Angels Beauty ecommerce
-website, rebuilt from scratch on Next.js 16 + TypeScript. It covers the technology
-stack, development roadmap (Phases 1–4), database schema, authentication, API
-structure, third-party integration strategy, security, and the plan for replacing
-all temporary demo content with production-ready implementations.
-
-The homepage (Phase 1, Task 1) is complete and under QC review. **No further
-development stages will start until the design and this architecture are
-approved.**
-
-Two non-negotiable guardrails from the client:
-- **Do not create new Cloudinary or Supabase accounts.** Verify and reuse the
-  existing accounts/data.
-- **Do not connect `angelsbeauties.shop`** until the new site is approved.
+**Status:** Revised after client architecture corrections. Pending client approval before Phase 1 Task 2 (remaining pages) and Phase 2 (backend) begin.
+**Database:** Isolated local PostgreSQL 17 dev database — **not** connected to, and never modifies, the existing production Supabase database or the live Angels Beauty website.
+**Schema status:** Complete, validated, and migrated to the dev database (see §6). Field-level mapping to existing Supabase tables will be confirmed during the read-only inventory (§5) — no destructive changes will be made to existing data.
 
 ---
 
-## 2. Confirmed technology stack
+## 1. What changed in this revision
 
-| Layer | Choice | Notes |
+This revision incorporates all 10 client architecture corrections:
+
+| # | Correction | How it is addressed |
 |---|---|---|
-| Framework | **Next.js 16 (App Router)** | Required, non-negotiable |
-| Language | **TypeScript 5** | Required, strict |
-| Styling | **Tailwind CSS 4 + shadcn/ui (New York)** | Already scaffolded |
-| Client state | **Zustand** | Cart UI state, UI preferences |
-| Server state | **TanStack Query** | Product lists, cart sync, admin data |
-| ORM | **Prisma 6** | Dev = SQLite; Prod (Phase 3) = Supabase Postgres |
-| Auth | **NextAuth.js v4** | Credentials + role-based access |
-| Validation | **Zod** | Shared client/server schemas |
-| Icons | **Lucide React** | Already in use |
-| Realtime | **Socket.io mini-service** (optional) | Order status / admin live updates only if needed |
-| Hosting | **Vercel** | Preview URL first; production only after approval |
-| Payments | **Clover** (Phase 3) | |
-| Shipping | **EasyPost** (Phase 3) | |
-| Images | **Cloudinary** (Phase 3) | Existing account — verify assets first |
-| Database | **Supabase (Postgres)** (Phase 3) | Existing account — verify data first |
-| Email | **TBD provider** (Phase 3) | Transactional: order confirmations, shipping, resets |
+| 1 | Read-only inventory of existing Supabase + Cloudinary **before** finalizing schema | §5 — inventory script + template provided; credentials requested; schema is complete but mapping to existing tables is confirmed during inventory with no destructive ops. |
+| 2 | Isolated PostgreSQL dev DB (not SQLite) | §4 — local PostgreSQL 17 on port 5433, database `angels_dev`, fully isolated. SQLite is no longer used. |
+| 3 | Complete Prisma schema, validated, with migrations | §6 — 23 models, all relationships/constraints/indexes validated; initial migration `20261114152704_init` applied to dev DB. |
+| 4 | Server-side authorization on **every** protected endpoint + server action (not middleware alone) | §8 — `requireRole()`/`requireSession()` helpers called inside every route handler and server action; middleware is defense-in-depth only. |
+| 5 | Preserve guest checkout (no account required) | §7 + §9 — `Order.userId` optional, guest email captured, cart supports anonymous sessions, checkout works without login. |
+| 6 | Safe checkout: server-side price verification, inventory protection, idempotent payments, verified webhooks, safe transactions | §9 — full pipeline with `$transaction`, price recompute, inventory reserve/commit with optimistic lock, idempotency keys, signature-verified webhooks. |
+| 7 | Dedicated image-management operations (price/variant/shipping edits can't erase images) | §10 — `ProductImage` is a separate model with its own CRUD endpoints; product/variant/price/shipping update operations never touch image rows. |
+| 8 | Preserve historical orders when products/variants archived | §6 + §11 — soft-archive (`status`, `archivedAt`), never hard delete; `OrderItem` stores a full snapshot; FKs use `Restrict`. |
+| 9 | Security, backup, logging, monitoring, rollback | §12 — audit log, webhook log, input validation, rate limiting, secrets management, backup strategy, logging/monitoring, migration + deploy rollback. |
+| 10 | Keep new site isolated from live website + production DB | §4 + §13 — dev DB is local and isolated; no prod credentials in the project; no live domain; Vercel preview deploys only; `angelsbeauties.shop` not connected until written approval. |
+
+---
+
+## 2. Technology stack (confirmed)
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router) + TypeScript 5 (strict) |
+| Styling | Tailwind CSS 4 + shadcn/ui (New York) |
+| Client state | Zustand (UI/cart) |
+| Server state | TanStack Query |
+| ORM | Prisma 6 → **PostgreSQL** (dev + prod) |
+| Dev database | Local PostgreSQL 17 (isolated) |
+| Prod database | Existing Supabase (Postgres) — verified read-only before connection (Phase 3) |
+| Auth | NextAuth.js v4 (JWT, credentials + roles) |
+| Validation | Zod (shared client/server) |
+| Images | Cloudinary (Phase 3, existing account) |
+| Payments | Clover (Phase 3, sandbox until cutover) |
+| Shipping | EasyPost (Phase 3, sandbox until cutover) |
+| Email | Transactional provider TBD (Phase 3) |
+| Hosting | Vercel — preview URL only until approval |
 
 ---
 
 ## 3. Architecture overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                       Vercel (hosting)                        │
-│   Preview URL  ──►  (approval gate)  ──►  Production          │
-└───────────────────────────┬─────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        Vercel (hosting)                        │
+│   Preview URL  ──►  (approval gate)  ──►  Production           │
+│   * angelsbeauties.shop NOT connected until written approval * │
+└───────────────────────────┬──────────────────────────────────┘
                             │
             ┌───────────────▼────────────────┐
             │   Next.js 16 App Router (1 app) │
             │   - React Server Components      │
             │   - Route Handlers (/api/*)      │
             │   - Server Actions (forms)       │
-            │   - Middleware (auth, locale)    │
+            │   - Middleware (auth guard,      │
+            │     DEFENSE-IN-DEPTH only)       │
             └───────┬──────────────┬───────────┘
         Client side │              │ Server side
    ┌────────────────┘              └──────────────┐
    │ Zustand (UI/cart)  │   Prisma Client (server)│
    │ TanStack Query     │   NextAuth sessions     │
    │ shadcn/ui          │   Zod validation        │
+   │                    │   requireRole() per     │
+   │                    │   route/action          │
    └────────────────────┘   └───────────┬─────────┘
                                         │
             ┌───────────────────────────▼───────────────────────────┐
-            │              Phase 2 dev: local SQLite                 │
-            │   (separate dev DB — no touch to Supabase/Cloudinary)  │
+            │   ISOLATED local PostgreSQL 17  (port 5433, angels_dev) │
+            │   • Separate from production Supabase                    │
+            │   • No read/write access to live data                    │
             └───────────────────────────┬───────────────────────────┘
-                                        │  (Phase 3 cutover)
+                                        │  (Phase 3 cutover — only after
+                                        │   read-only inventory + approval)
             ┌───────────────────────────▼───────────────────────────┐
-            │  Supabase (Postgres)  │  Cloudinary  │  Clover  │ EasyPost │ Email │
-            │  *verified existing*   │  *verified*  │  *new*   │  *new*  │  *new*│
+            │  Supabase (existing) │ Cloudinary (existing) │ Clover  │
+            │  *verified read-only* │ *verified*            │ (new)   │
+            │  EasyPost (new) │ Email (new)                                │
             └──────────────────────────────────────────────────────┘
 ```
 
-**Key principle:** one Next.js application serves both the storefront and the
-admin dashboard. Admin lives under `/admin/*` protected by a middleware
-role check. The storefront and admin share the same Prisma client and API
-layer but with different route segments and authorization.
+---
+
+## 4. Isolated PostgreSQL development database
+
+**Implementation (already done):**
+- PostgreSQL 17.12 installed locally **without root** (Debian packages extracted to `~/pg`, binaries at `~/pg/usr/lib/postgresql/17/bin/`).
+- Data directory: `~/pgdata`. Server runs on **port 5433** (distinct from any default), listening on `localhost` only, Unix socket in `/tmp`.
+- Superuser/dev role: `angels`. Auth: `trust` (local dev only — never exposed externally).
+- Dev database: `angels_dev`.
+- Connection string (in `.env`):
+  `DATABASE_URL=postgresql://angels@localhost:5433/angels_dev?schema=public`
+
+**Isolation guarantees:**
+- This database has **no network path** to the production Supabase database.
+- No production credentials exist in the project (`.env` Phase 3 placeholders are empty).
+- The existing live Angels Beauty website and its production database are **completely unaffected** by anything in this dev environment.
+- Start/stop (dev only): `~/pg/usr/lib/postgresql/17/bin/pg_ctl -D ~/pgdata start|stop`.
+
+**Why Postgres, not SQLite:** the client correction requires building on the same engine we will ship to production (Supabase Postgres), eliminating the risk and schema drift of a late SQLite→Postgres switch. Prisma features used here (enums, `Json`, `Decimal`, native arrays, FK constraints) are all Postgres-native.
 
 ---
 
-## 4. Development roadmap
+## 5. Read-only data inventory (correction #1)
+
+**Status: not yet executed — credentials required from the client.**
+
+I checked the environment: **no Supabase or Cloudinary credentials are present** (the previous Angels Beauty development project was deleted, and no credentials remain in env vars or `.env`). Therefore the read-only inventory cannot be run yet.
+
+**What I need from you (minimum-privilege, read-only):**
+- **Supabase:** either (a) a read-only Postgres connection string to the existing project, or (b) the project URL + a **read-only** service role / anon key with SELECT access only. If you prefer not to share credentials, you can run the provided script yourself and send me the JSON report.
+- **Cloudinary:** cloud name + API key + API secret (read-only usage: `resources` listing only; no uploads/deletes).
+
+**What the inventory will do (strictly read-only):**
+- Supabase: list tables, row counts per table, column types, sample rows (first 3), and existing constraints/indexes — for products, categories, variants, orders, and any related tables.
+- Cloudinary: list resource counts by type/tag/folder, and a sample of asset public IDs + URLs — to confirm whether existing product images are still present.
+
+**What the inventory will NOT do:**
+- No `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, or any write operation.
+- No uploads, deletions, or transformations to Cloudinary assets.
+- No schema changes to Supabase.
+
+**Deliverables:** the inventory script (`scripts/read-only-inventory.ts`, §14) and an empty report template (`download/SUPABASE-CLOUDINARY-INVENTORY-TEMPLATE.md`). Once you provide credentials (or run the script), I will fill the report and finalize any field-level mapping between existing Supabase tables and the schema in §6 — **without modifying existing data**.
+
+---
+
+## 6. Completed Prisma schema (correction #3)
+
+**Status: complete, validated (`prisma validate` ✔), formatted, and migrated to the dev database.**
+
+- File: `prisma/schema.prisma`
+- Initial migration: `prisma/migrations/20261114152704_init/migration.sql` (applied to `angels_dev`; 23 tables created).
+- Prisma Client generated.
+
+**Models (23):**
+
+| Group | Models |
+|---|---|
+| Auth & users | `User`, `Account`, `VerificationToken` |
+| Catalog | `Category` (nested), `Product`, `ProductVariant`, `ProductImage`, `Inventory` |
+| Shopping | `Cart`, `CartItem`, `WishlistItem` |
+| Orders | `Order`, `OrderItem` (snapshot), `Address` |
+| Shipping & payments | `Shipment`, `Payment` |
+| Reviews & promotions | `Review` (moderated), `Promotion` (authorized), `CouponRedemption` |
+| Content & settings | `Page`, `StoreSetting` |
+| Security | `AuditLog`, `WebhookEvent` |
+
+**Key constraints & relationships (highlights):**
+- **Money as integer cents** (`*Cents Int`) — matches payment processors, no rounding, works on Postgres.
+- **Soft-archive, never hard delete:** `Product.status` (`DRAFT`/`ACTIVE`/`ARCHIVED`), `ProductVariant.archivedAt`. Catalog FKs use `onDelete: Restrict` to prevent accidental deletion.
+- **Historical order preservation (correction #8):** `OrderItem` stores a full snapshot (`name`, `sku`, `unitCents`, `lineCents`, `imageUrl`, `variantName`). `OrderItem.variantId` uses `Restrict`, so archiving a variant keeps both the row and the reference valid, and the order still displays correctly from the snapshot.
+- **Image isolation (correction #7):** `ProductImage` is a dedicated model with its own lifecycle (`cloudinaryPublicId`, `url`, `altText`, `sortOrder`, `isPrimary`). It is managed only via dedicated image endpoints; product/variant/price/shipping update operations never read or write image rows.
+- **Inventory protection (correction #6):** `Inventory` has `quantity`, `reservedQty` (held during checkout), `lowStockThreshold`, `trackInventory`, and `version` (optimistic concurrency lock). Available = `quantity - reservedQty`, enforced in app logic.
+- **Idempotent payments (correction #6):** `Payment.idempotencyKey` is `@unique`, `Payment.providerPaymentId` is `@unique`. Duplicate charge attempts are rejected.
+- **Verified webhooks (correction #6):** `WebhookEvent` logs every incoming webhook with `provider`, `externalId` (`@unique` per provider — idempotent), `signature`, `payload`, and `status` (`RECEIVED`/`PROCESSING`/`PROCESSED`/`FAILED`).
+- **Guest checkout (correction #5):** `Order.userId` is optional; `Order.email` captures the guest email; `Cart.userId` optional with `sessionId` for anonymous carts; `Address.userId` optional.
+- **Authorized promotions (40% OFF control):** `Promotion.isActive` + `authorizedBy` + `startsAt`/`endsAt` + `usageLimit`. No promotional banner renders on the live site without an active, authorized, in-date record.
+- **Indexing:** FK columns and common filter/sort columns are indexed (`@@index`) for query performance.
+
+The full schema is in `prisma/schema.prisma` and the generated SQL in `prisma/migrations/20261114152704_init/migration.sql`.
+
+---
+
+## 7. Authentication & authorization
+
+**Provider:** NextAuth.js v4, **JWT** (stateless — best for Vercel serverless).
+- Credentials provider (email + password), bcrypt-hashed passwords.
+- Roles: `CUSTOMER`, `ADMIN`, `SUPER_ADMIN`.
+- Account flows: email verification, password reset (token via `VerificationToken`), optional OAuth later (`Account`).
+- First admin created via an **invite-only script** (or env-seeded super-admin), never via public sign-up.
+
+**Guest checkout is preserved:** a customer can complete checkout without an account. An account is only required for wishlist persistence, order history, and saved addresses. A guest order captures the email and can optionally be migrated to an account post-purchase.
+
+---
+
+## 8. Server-side authorization (correction #4 — not middleware alone)
+
+Middleware checks the JWT for route protection (`/account/*`, `/checkout`, `/admin/*`, `/api/admin/*`) as **defense-in-depth**, but every protected Route Handler and Server Action additionally calls an explicit authorization helper:
+
+```
+// pseudo — actual helpers live in src/lib/authz.ts
+requireSession()           → throws 401 if no valid session
+requireRole("ADMIN")      → throws 403 if session.role < ADMIN
+requireOwnership(resource) → throws 403 if resource.userId !== session.userId
+```
+
+- Every `/api/admin/*` handler calls `requireRole("ADMIN")` at the top, then re-checks before each mutating operation.
+- Every customer write endpoint (`/api/cart`, `/api/wishlist`, `/api/orders`, `/api/account/*`) calls `requireSession()` and `requireOwnership()` where the resource is user-scoped.
+- Server Actions repeat the same checks — they never trust that "middleware already verified."
+- Read endpoints validate query input with Zod before querying.
+
+This means even if middleware were bypassed or misconfigured, each handler independently enforces authorization.
+
+---
+
+## 9. Checkout pipeline (correction #6 — safe by construction)
+
+The checkout flow runs as a single Prisma `$transaction` with the following stages:
+
+1. **Validate cart** — load cart items, confirm each variant is `ACTIVE` (not archived), confirm `trackInventory` + available quantity.
+2. **Server-side price verification** — recompute every line total from the **database** `ProductVariant.priceCents` (never trust client-submitted prices). Recompute subtotal, discount (from a verified `Promotion`), shipping (from EasyPost rate or flat rule), tax. The client-submitted total is compared; any mismatch aborts the transaction.
+3. **Inventory protection** — atomically increment `Inventory.reservedQty` (with optimistic-lock `version` check) for each line. If available drops below the requested quantity, abort.
+4. **Idempotent payment** — check `Payment.idempotencyKey`; if already processed, return the existing result. Otherwise create a Clover charge server-side with that key. On success, record `providerPaymentId`; on failure, roll back the reservation.
+5. **Create order** — insert `Order` (status `CONFIRMED`, `paymentStatus` `PAID`), `OrderItem` rows with the **snapshot**, `CouponRedemption`, and link `Payment`.
+6. **Commit inventory** — convert `reservedQty` into actual `quantity` deduction; decrement stock.
+7. **Webhook safety** — Clover/EasyPost webhooks update order/shipment status only after **signature verification** and **idempotent** processing (checked via `WebhookEvent.externalId`).
+
+If any stage fails, the transaction rolls back: no partial orders, no orphaned inventory holds, no duplicate charges.
+
+---
+
+## 10. Image management isolation (correction #7)
+
+- `ProductImage` rows are created/updated/deleted **only** through dedicated endpoints:
+  `POST /api/admin/products/[id]/images`, `PATCH /api/admin/images/[id]`, `DELETE /api/admin/images/[id]`, `POST /api/admin/images/[id]/primary`.
+- The product update endpoint (`PATCH /api/admin/products/[id]`) and the variant update / price / shipping endpoints operate on `Product`/`ProductVariant`/`Inventory` fields only — they **never** include image fields in their Zod input schema and never write to `ProductImage`.
+- Reordering/setting primary is a separate image operation.
+- Deleting a product cascades its images (FK `onDelete: Cascade` on `ProductImage`), but archiving a product (the normal lifecycle) leaves images intact.
+- Result: editing price, variants, or shipping can never accidentally erase images.
+
+---
+
+## 11. Historical order preservation (correction #8)
+
+- Products and variants are **soft-archived**, never hard-deleted.
+- `OrderItem` carries a full purchase-time snapshot (`name`, `sku`, `unitCents`, `lineCents`, `imageUrl`, `variantName`), so an order renders correctly forever — even if the product or variant is later archived or its price/name changes.
+- `OrderItem.variantId` and `OrderItem.productId` use `onDelete: Restrict`, and `Order`/`OrderItem` use `Restrict`, so neither the variant nor the order can be accidentally deleted while the other exists.
+- Admin "delete" actions on catalog entities are actually "archive" actions.
+
+---
+
+## 12. Security, backup, logging, monitoring, rollback (correction #9)
+
+**Security**
+- All input validated with Zod (shared schemas).
+- Passwords bcrypt-hashed; JWT signed with a server secret; HTTP-only cookies.
+- Per-route + per-action server-side authorization (§8).
+- Rate limiting on auth, newsletter, contact, and review endpoints.
+- No third-party SDK or secrets in client code; all provider calls server-side.
+- CORS locked to the storefront origin; webhooks verified by signature.
+
+**Backup**
+- Dev DB (`angels_dev`): periodic `pg_dump` snapshots into `db/backups/`.
+- Production (Phase 3): rely on Supabase automated backups + nightly logical exports; Cloudinary assets are immutable and versioned. No destructive migration runs without a pre-snapshot.
+
+**Logging & monitoring**
+- `AuditLog` records every admin mutating action (actor, role, action, entity, IP, metadata).
+- `WebhookEvent` records every incoming provider webhook and its processing result.
+- Application errors logged server-side with request context; no sensitive data in logs.
+- Vercel runtime logs + uptime monitoring on the preview URL.
+
+**Rollback**
+- Migrations are versioned in `prisma/migrations/`; every change has a down-path or is applied additively. `prisma migrate resolve` + `migrate diff` used for safe corrections. No `db push` against production.
+- Deployments: Vercel instant rollback to the previous preview/production deployment.
+- Failed migrations never reach production (preview gate + approval).
+
+---
+
+## 13. Isolation from the live site & production database (correction #10)
+
+- The dev database is **local** (port 5433) and has no network route to production Supabase.
+- No production credentials live in the project (Phase 3 placeholders are empty in `.env`).
+- No code connects to Cloudinary, Clover, EasyPost, or email yet.
+- Deployment target is a **separate Vercel preview URL**. `angelsbeauties.shop` is **not** connected and will not be until you give written approval after Phase 4 testing.
+- The existing live Angels Beauty website continues to operate independently and is unaffected.
+
+---
+
+## 14. Read-only inventory script & template
+
+Provided as separate files:
+- **Script:** `scripts/read-only-inventory.ts` — a standalone TypeScript script that connects to Supabase (read-only) and Cloudinary (read-only) and emits a JSON inventory report. It performs **only** `SELECT` / list operations. Run with: `bun run scripts/read-only-inventory.ts` after setting the env vars listed in the script header.
+- **Template:** `download/SUPABASE-CLOUDINARY-INVENTORY-TEMPLATE.md` — the report structure I will fill once the inventory is run.
+
+---
+
+## 15. Updated development roadmap
 
 ### Phase 1 — Frontend (in progress)
-Customer-facing UI + admin UI shell, all using demo data.
-
-| Task | Status | Notes |
-|---|---|---|
-| 1.1 Homepage | ✅ Done | Under QC review |
-| 1.2 Shop & category listing pages | Pending approval | Grid + filters + sort |
-| 1.3 Individual product pages | Pending | Gallery, variants, reviews, related |
-| 1.4 Search + filtering | Pending | Query, facets (category, price, rating), sort |
-| 1.5 Cart + wishlist | Pending | Drawer/page, qty, totals, persisted server-side |
-| 1.6 Customer account pages | Pending | Profile, addresses, order history, wishlist |
-| 1.7 Checkout interface | Pending | Shipping, payment (Clover stub), review, confirmation |
-| 1.8 About + Contact pages | Pending | Static + form |
-| 1.9 Promotional banners / offers | Pending | Admin-driven, authorized flag |
-| 1.10 Customer reviews UI | Pending | List + submit form (moderated) |
-| 1.11 Newsletter + footer | Pending | Newsletter already on homepage |
-| 1.12 Admin dashboard UI | Pending | Products, orders, customers, inventory, content |
-
-### Phase 2 — Backend core (after Phase 1 + design approval)
-Clean, secure ecommerce architecture on the **local dev SQLite DB**.
-
-| Module | Deliverables |
+| Task | Status |
 |---|---|
-| Product & category management | CRUD APIs, nested categories, slug management, sort/featured flags |
-| Product variants & inventory | Variants (size/shade), SKU, stock levels, low-stock thresholds, track flag |
-| Customer accounts & auth | NextAuth credentials, email verification, password reset, roles |
-| Order management | Cart → checkout → order pipeline, order items snapshot, statuses |
-| Admin access controls | Role-based (CUSTOMER / ADMIN / SUPER_ADMIN), middleware guard on `/admin` + `/api/admin` |
-| Image management | Upload flow (local dev → Cloudinary in Phase 3), primary image, sort, alt text |
-| Shipping & payment integration points | Interfaces/stubs for Clover + EasyPost; real wiring in Phase 3 |
-| Server-side validation & errors | Zod schemas shared client/server, centralized error responses |
+| 1.1 Homepage | ✅ Complete (design corrections applied + verified) |
+| 1.2 Shop & category listing pages | Pending approval |
+| 1.3 Individual product pages (gallery, variants, reviews, related) | Pending |
+| 1.4 Search + filtering (query, facets, sort) | Pending |
+| 1.5 Cart drawer/page + wishlist | Pending |
+| 1.6 Customer account pages (profile, addresses, orders, wishlist) | Pending |
+| 1.7 Checkout interface (guest + signed-in) | Pending |
+| 1.8 About + Contact pages | Pending |
+| 1.9 Promotional banners (admin-driven, authorized) | Pending |
+| 1.10 Customer reviews UI (list + submit, moderated) | Pending |
+| 1.11 Newsletter + footer | Newsletter done on homepage |
+| 1.12 Admin dashboard UI | Pending |
 
-### Phase 3 — Connect existing services (after Phase 2 verified)
-**Step 0 (before any code): verify existing data.**
-1. Inspect existing Supabase database — do products, categories, variants,
-   orders still exist? Map their shape to the new Prisma schema.
-2. Inspect existing Cloudinary account — do product images still exist?
-   Record public IDs and URLs.
-3. **Do not delete, overwrite, or modify** any existing Supabase or Cloudinary data.
+### Phase 2 — Backend core (on isolated Postgres dev DB)
+- Product/category/variant/inventory management + dedicated image operations (§10)
+- Customer auth + roles + server-side authorization on every endpoint/action (§8)
+- Cart/wishlist (anonymous + authenticated), guest checkout preserved (§7, §9)
+- Order pipeline with safe transactions, price verification, inventory protection, idempotent payments, verified webhooks (§9)
+- Admin access controls + audit logging (§12)
+- Reviews moderation, authorized promotions, content pages, settings
+- Zod validation everywhere; consistent error shape
 
-Then (read-only first, then migrate):
-- Switch Prisma datasource from SQLite → Supabase Postgres.
-- Backfill/import verified data into the new schema (or adapt schema to fit
-  existing tables if the client prefers to keep current structure).
-- Wire Cloudinary for image upload + transformations (signed uploads,
-  on-the-fly resizing/optimization).
-- Wire Clover payments (hosted fields / iframe + server-side charge, webhooks).
-- Wire EasyPost (rate shopping, label purchase, tracker webhooks).
-- Wire transactional email (order confirmation, shipping, password reset).
+### Phase 3 — Connect existing services (read-only audit first, then integrate)
+1. Run the read-only inventory (§5) — verify existing Supabase + Cloudinary data; present findings.
+2. Map existing data to the §6 schema; import or adapt **without destructive changes**; take a pre-snapshot.
+3. Switch Prisma datasource to Supabase (dev schema first, then production after testing).
+4. Wire Cloudinary signed uploads + transformations (existing assets reused).
+5. Wire Clover (sandbox) + EasyPost (sandbox) + webhooks.
+6. Wire transactional email.
 
-### Phase 4 — Testing & deployment (after Phase 3)
-- Full E2E test matrix (see §10).
+### Phase 4 — Testing & deployment
+- Full E2E test matrix (§10 of the prior version, retained).
 - Deploy to a **separate Vercel preview URL**.
 - Client review on preview.
-- Only after written approval: point `angelsbeauties.shop` to the new build.
+- Only after **written approval**: point `angelsbeauties.shop` to the new build.
 
 ---
 
-## 5. Proposed database schema (Prisma)
+## 16. Guardrails (reaffirmed)
 
-> Money is stored as **integer cents** (`*Cents Int`) — works identically on
-> SQLite (dev) and Postgres (prod), avoids floating-point errors, and matches
-> what payment processors expect. This is a deliberate deviation from a naive
-> `Decimal` approach.
-
-### 5.1 Auth & users
-```prisma
-model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  passwordHash    String?              // null for OAuth-only users
-  firstName       String?
-  lastName        String?
-  role            UserRole @default(CUSTOMER)
-  status          UserStatus @default(ACTIVE)
-  emailVerifiedAt DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  addresses       Address[]
-  orders          Order[]
-  reviews         Review[]
-  wishlistItems   WishlistItem[]
-  cart            Cart?
-}
-
-enum UserRole   { CUSTOMER ADMIN SUPER_ADMIN }
-enum UserStatus { ACTIVE SUSPENDED PENDING }
-
-// NextAuth.js required tables
-model Account            { /* OAuth accounts */ }
-model Session            { /* DB sessions if used */ }
-model VerificationToken  { /* email verify / reset */ }
-```
-
-### 5.2 Catalog
-```prisma
-model Category {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  name        String
-  description String?
-  imageId     String?                 // Cloudinary public id (Phase 3)
-  imageUrl    String?
-  parentId    String?
-  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryTree")
-  products    Product[]
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model Product {
-  id               String       @id @default(cuid())
-  slug             String       @unique
-  name             String
-  shortDescription String?
-  description      String?      // markdown
-  categoryId       String
-  category         Category     @relation(fields: [categoryId], references: [id])
-  variants         ProductVariant[]
-  images           ProductImage[]
-  reviews          Review[]
-  status           ProductStatus @default(DRAFT)
-  isFeatured       Boolean      @default(false)
-  isBestSeller     Boolean      @default(false)
-  isTrending       Boolean      @default(false)
-  sortOrder        Int          @default(0)
-  // denormalized for fast filtering/sorting
-  priceMinCents    Int?
-  priceMaxCents    Int?
-  ratingAvg        Float?       // 0–5
-  ratingCount      Int          @default(0)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-}
-enum ProductStatus { DRAFT ACTIVE ARCHIVED }
-
-model ProductVariant {
-  id              String   @id @default(cuid())
-  productId       String
-  product         Product  @relation(fields: [productId], references: [id])
-  sku             String   @unique
-  name            String?                 // "30ml", "Shade: Rose"
-  optionValues    String?                 // JSON string: {"size":"30ml","shade":"Rose"}
-  priceCents      Int
-  compareAtCents  Int?
-  inventory       Inventory?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-model ProductImage {
-  id                String  @id @default(cuid())
-  productId         String
-  product           Product @relation(fields: [productId], references: [id])
-  cloudinaryPublicId String                 // Phase 3; local path in dev
-  url               String
-  altText           String?
-  sortOrder         Int     @default(0)
-  isPrimary         Boolean @default(false)
-  createdAt         DateTime @default(now())
-}
-
-model Inventory {
-  id                String  @id @default(cuid())
-  variantId         String  @unique
-  variant           ProductVariant @relation(fields: [variantId], references: [id])
-  quantity          Int     @default(0)
-  lowStockThreshold Int     @default(5)
-  trackInventory    Boolean @default(true)
-  updatedAt         DateTime @updatedAt
-}
-```
-
-### 5.3 Shopping
-```prisma
-model Cart {
-  id         String      @id @default(cuid())
-  userId     String?     @unique
-  sessionId  String?                 // anonymous cart
-  items      CartItem[]
-  couponCode String?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-}
-model CartItem {
-  id        String   @id @default(cuid())
-  cartId    String
-  cart      Cart     @relation(fields: [cartId], references: [id])
-  variantId String
-  variant   ProductVariant @relation(fields: [variantId], references: [id])
-  quantity  Int
-  @@unique([cartId, variantId])
-}
-model WishlistItem {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id])
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  @@unique([userId, productId])
-}
-```
-
-### 5.4 Orders, shipping, payments
-```prisma
-model Order {
-  id                 String   @id @default(cuid())
-  orderNumber        String   @unique
-  userId             String?
-  user               User?    @relation(fields: [userId], references: [id])
-  email              String                      // guest checkout email
-  status             OrderStatus @default(PENDING)
-  fulfillmentStatus  FulfillmentStatus @default(UNFULFILLED)
-  paymentStatus      PaymentStatus @default(PENDING)
-  subtotalCents      Int
-  discountCents      Int      @default(0)
-  shippingCents      Int      @default(0)
-  taxCents           Int      @default(0)
-  totalCents         Int
-  currency           String   @default("USD")
-  shippingAddressId  String?
-  shippingAddress    Address? @relation("OrderShipping", fields: [shippingAddressId], references: [id])
-  billingAddressId   String?
-  billingAddress     Address? @relation("OrderBilling", fields: [billingAddressId], references: [id])
-  items              OrderItem[]
-  shipments          Shipment[]
-  payments           Payment[]
-  notes              String?
-  placedAt           DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-}
-enum OrderStatus        { PENDING CONFIRMED CANCELLED REFUNDED }
-enum FulfillmentStatus  { UNFULFILLED PARTIAL FULFILLED }
-enum PaymentStatus      { PENDING AUTHORIZED PAID PARTIALLY_PAID REFUNDED FAILED }
-
-model OrderItem {
-  id           String  @id @default(cuid())
-  orderId      String
-  order        Order   @relation(fields: [orderId], references: [id])
-  variantId    String
-  variant      ProductVariant @relation(fields: [variantId], references: [id])
-  productId    String
-  name         String                  // snapshot at purchase time
-  sku          String                  // snapshot
-  unitCents    Int
-  quantity     Int
-  lineCents    Int
-  imageUrl     String?                 // snapshot
-}
-
-model Address {
-  id         String  @id @default(cuid())
-  userId     String?
-  user       User?   @relation(fields: [userId], references: [id])
-  firstName  String
-  lastName   String
-  line1      String
-  line2      String?
-  city       String
-  state      String
-  postalCode String
-  country    String
-  phone      String?
-  isDefault  Boolean @default(false)
-}
-
-model Shipment {
-  id                  String  @id @default(cuid())
-  orderId             String
-  order               Order   @relation(fields: [orderId], references: [id])
-  carrier             String?
-  trackingNumber      String?
-  easypostShipmentId  String?
-  easypostTrackerId   String?
-  status              ShipmentStatus @default(LABEL_CREATED)
-  labelUrl            String?
-  estimatedDelivery   DateTime?
-  shippedAt           DateTime?
-  deliveredAt         DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-}
-enum ShipmentStatus { LABEL_CREATED IN_TRANSIT OUT_FOR_DELIVERY DELIVERED RETURNED EXCEPTION }
-
-model Payment {
-  id              String        @id @default(cuid())
-  orderId         String
-  order           Order         @relation(fields: [orderId], references: [id])
-  provider        PaymentProvider
-  providerPaymentId String?                   // Clover payment id
-  amountCents     Int
-  currency        String        @default("USD")
-  status          PaymentStatus
-  raw             String?                     // JSON snapshot of provider response
-  processedAt     DateTime?
-  createdAt       DateTime      @default(now())
-}
-enum PaymentProvider { CLOVER }
-```
-
-### 5.5 Reviews, promotions, content, settings
-```prisma
-model Review {
-  id                String  @id @default(cuid())
-  productId         String
-  product           Product @relation(fields: [productId], references: [id])
-  userId            String?
-  user              User?   @relation(fields: [userId], references: [id])
-  authorName        String
-  rating            Int                       // 1–5
-  title             String?
-  body              String
-  status            ReviewStatus @default(PENDING)   // moderated
-  isVerifiedPurchase Boolean @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-}
-enum ReviewStatus { PENDING APPROVED REJECTED }
-
-model Promotion {
-  id            String  @id @default(cuid())
-  code          String? @unique              // null = automatic
-  name          String
-  description   String?
-  type          PromotionType
-  value         Int                          // percent (0–100) or fixed cents
-  isActive      Boolean @default(false)      // ★ must be authorized true to display
-  authorizedBy  String?                      // admin user id
-  startsAt      DateTime?
-  endsAt        DateTime?
-  usageLimit    Int?
-  usageCount    Int     @default(0)
-  appliesTo     ApplyScope @default(ALL)
-  scopeJson     String?                      // JSON: {categoryIds:[], productIds:[]}
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-enum PromotionType { PERCENTAGE FIXED_AMOUNT FREE_SHIPPING }
-enum ApplyScope    { ALL CATEGORY PRODUCT }
-
-model Page {                // About, Contact, legal pages
-  id            String  @id @default(cuid())
-  slug          String  @unique
-  title         String
-  body          String                  // markdown
-  seoTitle      String?
-  seoDescription String?
-  published     Boolean @default(false)
-  updatedAt     DateTime @updatedAt
-}
-
-model StoreSetting {       // global key/value config
-  id    String @id @default(cuid())
-  key   String @unique
-  value String
-  updatedAt DateTime @updatedAt
-}
-```
+- No migrations against production.
+- No live payment credentials (Clover/EasyPost sandbox only until cutover).
+- No deployment to the live domain until written approval.
+- No new Supabase or Cloudinary accounts created without client approval.
+- No destructive operations on existing Supabase or Cloudinary data.
 
 ---
 
-## 6. Authentication & authorization
+## 17. Approvals needed
 
-**Provider:** NextAuth.js v4.
+1. **Homepage design** — corrected version ready for review (screenshots provided separately).
+2. **This revised architecture** — stack, dev DB, schema, auth, checkout safety, image isolation, archival, security/backup/rollback, isolation.
+3. **Read-only inventory** — provide credentials (or run the script) so the existing Supabase + Cloudinary data can be verified before Phase 3.
 
-- **Credentials provider** (email + password) for customers and admins.
-  Passwords hashed with **bcrypt** (never stored or returned in plaintext).
-- **Session strategy:** JWT (stateless) — best fit for Vercel serverless and
-  the dev environment. Sessions carry `{ id, email, role }`.
-- **Roles:** `CUSTOMER`, `ADMIN`, `SUPER_ADMIN` (from `UserRole` enum).
-- **Route protection:**
-  - Middleware checks the JWT for `/account/*`, `/checkout`, `/admin/*`,
-    and `/api/admin/*`.
-  - Customer pages require `CUSTOMER+`.
-  - Admin requires `ADMIN+`. Super-admin can manage other admins.
-- **Account flows:** email verification, password reset (token via email),
-  optional OAuth (Google) later if desired.
-- **Admin provisioning:** the first admin is created via a secure,
-  invite-only script (or env-seeded super-admin), never via a public
-  sign-up form.
-
----
-
-## 7. API structure
-
-All backend logic is implemented as **Next.js Route Handlers** under
-`/api/*` (App Router), server-side only. No client-side SDK calls to
-third parties.
-
-```
-/api/auth/[...nextauth]        NextAuth handler
-/api/products                  GET list (filter/sort/paginate)
-/api/products/[slug]           GET one
-/api/categories                GET tree
-/api/categories/[slug]         GET one + products
-/api/search?q=                 GET search
-/api/cart                      GET/PATCH  (sync server cart)
-/api/cart/items                POST       (add item)
-/api/cart/items/[id]           PATCH/DELETE
-/api/wishlist                  GET/POST/DELETE
-/api/checkout                  POST       (create order + payment intent)
-/api/orders                    GET        (customer's orders)
-/api/orders/[id]               GET
-/api/reviews                   POST       (submit, moderated)
-/api/newsletter/subscribe      POST
-/api/contact                   POST
-
-/api/admin/products            GET/POST
-/api/admin/products/[id]       GET/PATCH/DELETE
-/api/admin/categories          GET/POST
-/api/admin/orders              GET/PATCH (status)
-/api/admin/orders/[id]         GET
-/api/admin/customers           GET
-/api/admin/inventory           PATCH
-/api/admin/images/upload       POST       (→ Cloudinary in Phase 3)
-/api/admin/promotions          CRUD
-/api/admin/reviews             PATCH (approve/reject)
-
-/api/webhooks/clover           POST       (payment events)
-/api/webhooks/easypost         POST       (tracking events)
-```
-
-**Conventions:**
-- All mutations validated with **Zod** schemas shared between client and server.
-- Consistent JSON error shape: `{ error: { code, message, fields? } }`.
-- All write endpoints require a valid session + CSRF where applicable.
-- Rate limiting on auth + public write endpoints (newsletter, contact, reviews).
-
----
-
-## 8. Integration strategy (Phase 3)
-
-| Service | Approach | Data safety |
-|---|---|---|
-| **Supabase (Postgres)** | Switch Prisma datasource to Supabase connection string. **Read-only audit first**: list tables, compare to schema §5, decide import-vs-adapt. | No destructive ops. Take a backup snapshot before any write migration. Use a separate dev Supabase project if the client allows, else a dev schema. |
-| **Cloudinary** | Signed uploads from server only. Store `cloudinaryPublicId` + transformed URL. On-the-fly transformations for product gallery sizes. | Verify existing image assets exist before reuse. Never delete existing assets without explicit approval. |
-| **Clover** | Clover hosted card fields (iframe) → token → server-side charge via Clover REST API. Webhook updates payment status. | Test mode / sandbox credentials until production cutover. |
-| **EasyPost** | Server-side rate shopping at checkout, label purchase on fulfillment, tracker webhooks for status updates. | Sandbox API key for dev. |
-| **Email** | Transactional provider (TBD — e.g., Resend/SendGrid). Templates for order confirmation, shipping update, password reset, welcome. | Double opt-in for newsletter. |
-| **Vercel** | Deploy preview per branch. Production deploy only after written approval. `angelsbeauties.shop` DNS pointed only at approval. | Preview URLs are isolated; no impact on live domain. |
-
-**Phase 3 verification checklist (before wiring):**
-1. Supabase: confirm products, categories, variants, orders data presence + shape.
-2. Cloudinary: confirm product image assets + public IDs.
-3. Record findings; present to client before any migration code runs.
-
----
-
-## 9. Demo content → production migration plan
-
-**Confirmation:** All current demo content and temporary functionality **will be
-replaced** with production-ready implementations. Specifically:
-
-| Demo (now) | Production (Phase 2/3) |
-|---|---|
-| Demo products, prices, categories in `src/lib/demo-data.ts` | Real products/categories/variants from Supabase, served via `/api/products` |
-| 22 AI-generated placeholder images in `/public/images/*` | Real product photography from Cloudinary (existing assets reused after verification) |
-| Demo testimonials (Sarah/Emily/Olivia) | Real moderated customer reviews from the `Review` table (approved only) |
-| In-memory cart/wishlist store (non-persisted) | Server-side `Cart`/`CartItem`/`WishlistItem` tables tied to user accounts |
-| Newsletter "subscribe" setTimeout stub | Real transactional email provider + subscriber persistence |
-| Static "Add to Cart" that only updates a badge | Real cart API, inventory checks, persistence |
-| **40% OFF sale banner** (see §11) | Admin-managed `Promotion` with `isActive` + `authorizedBy` flags |
-| Initial-letter testimonial avatars | Real customer photos (with consent) or omitted |
-| No real checkout | Clover-integrated checkout with real payment + EasyPost shipping |
-
-The `DemoBadge` component and the dashed "Demo Content" tags are **temporary
-scaffolding** and will be removed once real data flows in.
-
----
-
-## 10. Phase 4 testing matrix
-
-| Area | Tests |
-|---|---|
-| Product browsing | Listing, pagination, category drill-down, product detail |
-| Search & filtering | Query, facets (category/price/rating), sort, empty states |
-| Cart | Add/update/remove, qty, totals, persistence across login |
-| Checkout | Shipping address, rates, payment, order creation, confirmation |
-| Payments | Clover sandbox auth + capture, webhook status sync, refunds |
-| Shipping | EasyPost rate fetch, label purchase, tracking webhook |
-| Admin login | Role guard, super-admin invite flow, blocked customer access |
-| Image uploads | Admin product image upload, primary/secondary, alt text |
-| Product editing | Create/edit/variant/inventory, publish/draft |
-| Order management | View, status transitions, fulfillment, refunds |
-| Mobile | Full flow on 390px viewport |
-| Security | Auth, CSRF, input validation, rate limits, no secrets to client |
-| Performance | Image optimization, lazy load, query indexing, cache headers |
-
----
-
-## 11. The 40% OFF banner — demo content confirmation
-
-**Confirmed: the "Glow Up This Season — Up to 40% OFF" banner is DEMO content.**
-
-- It is currently a static promotional block hardcoded in the homepage for
-  visual reference only.
-- It does **not** represent a real offer and will **not** appear as a real
-  offer unless you explicitly authorize it.
-- In production, all promotions are governed by the `Promotion` table
-  (§5.5), which requires:
-  - `isActive = true`
-  - an `authorizedBy` value (the admin who enabled it)
-  - optional `startsAt` / `endsAt` scheduling
-  - optional `usageLimit`
-- No promotional banner will be displayed on the live site unless a real,
-  authorized promotion record exists and is active within its date window.
-
----
-
-## 12. Approvals needed before proceeding
-
-1. **Homepage design** — approve as-is, or approve with the visual corrections
-   listed in the QC comparison (provided separately in chat).
-2. **This architecture document** — approve the stack, roadmap, schema, auth,
-   API, and integration strategy.
-3. **Phase 3 data verification** — authorize read-only inspection of the
-   existing Supabase + Cloudinary accounts before any integration code.
-
-No development beyond the homepage will begin until items 1 and 2 are approved.
+No further development begins until these are approved.

@@ -13,7 +13,7 @@ export function ShopByCategory() {
           <div>
             <SectionLabel>Top Categories</SectionLabel>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h2 className="font-serif text-2xl font-bold text-forest sm:text-3xl">
+              <h2 className="font-sans text-2xl font-bold text-forest sm:text-3xl">
                 Shop by Category
               </h2>
               <DemoBadge />
@@ -53,12 +53,9 @@ export function ShopByCategory() {
                 />
               </div>
               <div className="mt-3 flex items-center justify-between">
-                <div>
-                  <p className="font-serif text-base font-bold text-forest">
-                    {cat.name}
-                  </p>
-                  <p className="text-[11px] text-forest/60">{cat.count}</p>
-                </div>
+                <p className="font-sans text-base font-bold text-forest">
+                  {cat.name}
+                </p>
                 <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-forest">
                   Shop
                   <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />

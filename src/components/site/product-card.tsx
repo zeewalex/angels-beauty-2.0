@@ -19,10 +19,6 @@ export function ProductCard({
   const toggleWishlist = useShop((s) => s.toggleWishlist);
   const isWished = useShop((s) => s.wishlist.includes(product.id));
 
-  const discount = Math.round(
-    ((product.compareAt - product.price) / product.compareAt) * 100,
-  );
-
   return (
     <div
       className={cn(
@@ -38,19 +34,6 @@ export function ProductCard({
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
         />
-        {/* stacked badges (top-left) so they never overlap */}
-        <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
-          {product.badge && (
-            <span className="rounded-full bg-forest px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white shadow-sm">
-              {product.badge}
-            </span>
-          )}
-          {discount > 0 && (
-            <span className="rounded-full bg-blush-dark px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
-              -{discount}%
-            </span>
-          )}
-        </div>
         <button
           onClick={() => {
             toggleWishlist(product.id);
@@ -70,12 +53,9 @@ export function ProductCard({
 
       {/* body */}
       <div className="flex flex-1 flex-col p-3.5 sm:p-4">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          {product.category}
-        </p>
         <Link
           href="#"
-          className="mt-0.5 text-[13px] font-semibold leading-snug text-forest hover:text-forest-light"
+          className="text-[13px] font-semibold leading-snug text-forest hover:text-forest-light"
         >
           {product.name}
         </Link>

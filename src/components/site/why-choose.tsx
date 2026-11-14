@@ -31,26 +31,22 @@ export function WhyChooseAngels() {
         <div className="grid items-center gap-0 overflow-hidden rounded-2xl bg-forest lg:grid-cols-[1.4fr_1fr]">
           <div className="p-7 sm:p-10 lg:p-12">
             <SectionLabel tone="white">Why Angels Beauty</SectionLabel>
-            <h2 className="mt-3 font-serif text-2xl font-bold text-white sm:text-3xl">
+            <h2 className="mt-3 font-sans text-2xl font-bold text-white sm:text-3xl">
               Why Choose Angels Beauty?
             </h2>
             <p className="mt-2 text-sm text-cream/70">
               Premium products. Real results. Always.
             </p>
 
-            <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* single row of 4 circular icon items */}
+            <div className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-4 sm:gap-6">
               {reasons.map((r) => (
-                <div
-                  key={r.title}
-                  className="flex items-start gap-3 rounded-xl bg-white/5 p-4 ring-1 ring-white/10"
-                >
-                  <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-forest">
-                    <r.icon size={20} />
+                <div key={r.title} className="flex flex-col items-center text-center">
+                  <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white text-forest shadow-sm sm:h-20 sm:w-20">
+                    <r.icon size={26} />
                   </span>
-                  <div className="leading-tight">
-                    <p className="text-sm font-semibold text-white">{r.title}</p>
-                    <p className="text-xs text-cream/70">{r.sub}</p>
-                  </div>
+                  <p className="mt-3 text-sm font-semibold text-white">{r.title}</p>
+                  <p className="mt-0.5 text-xs text-cream/70">{r.sub}</p>
                 </div>
               ))}
             </div>
@@ -60,7 +56,7 @@ export function WhyChooseAngels() {
             <img
               src="/images/banner-whychoose.png"
               alt="Angels Beauty serum and cream jar on a stone surface with flowers"
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
               loading="lazy"
             />
           </div>

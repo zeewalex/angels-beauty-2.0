@@ -31,8 +31,7 @@ export type DemoTestimonial = {
   id: string;
   name: string;
   country: string;
-  avatarBg: string;
-  initials: string;
+  avatar: string;
   rating: number;
   quote: string;
   highlights: string[];
@@ -175,8 +174,7 @@ export const demoTestimonials: DemoTestimonial[] = [
     id: "r1",
     name: "Sarah Johnson",
     country: "USA",
-    avatarBg: "bg-[#f7d9dc]",
-    initials: "SJ",
+    avatar: "/images/avatar-1.png",
     rating: 5,
     quote:
       "I've been using Angels Beauty for six months and my skin has never looked healthier. The natural ingredients and fast shipping make me a loyal customer now!",
@@ -186,8 +184,7 @@ export const demoTestimonials: DemoTestimonial[] = [
     id: "r2",
     name: "Emily Carter",
     country: "UK",
-    avatarBg: "bg-[#dde8d5]",
-    initials: "EC",
+    avatar: "/images/avatar-2.png",
     rating: 5,
     quote:
       "Absolutely in love with the Radiance Face Serum. It feels luxurious and my glow is real. The packaging is beautiful and delivery was quicker than expected.",
@@ -197,8 +194,7 @@ export const demoTestimonials: DemoTestimonial[] = [
     id: "r3",
     name: "Olivia Martinez",
     country: "Canada",
-    avatarBg: "bg-[#e4dcec]",
-    initials: "OM",
+    avatar: "/images/avatar-3.png",
     rating: 5,
     quote:
       "The Hydra Glow Moisturizer transformed my dry skin into something soft and radiant. Clean ingredients that actually work — I recommend Angels Beauty to everyone.",

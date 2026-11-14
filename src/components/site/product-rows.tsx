@@ -24,7 +24,7 @@ function ProductRow({
           <div className="max-w-xl">
             <SectionLabel>{label}</SectionLabel>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h2 className="font-serif text-2xl font-bold text-forest sm:text-3xl">
+              <h2 className="font-sans text-2xl font-bold text-forest sm:text-3xl">
                 {title}
               </h2>
               <DemoBadge />

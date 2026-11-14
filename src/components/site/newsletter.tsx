@@ -39,7 +39,7 @@ export function Newsletter() {
 
           <div className="relative p-7 sm:p-10 lg:p-14">
             <SectionLabel tone="green">Join Our Beauty Community</SectionLabel>
-            <h2 className="mt-3 font-serif text-2xl font-bold text-forest sm:text-3xl lg:text-4xl">
+            <h2 className="mt-3 font-sans text-2xl font-bold text-forest sm:text-3xl lg:text-4xl">
               Get Exclusive Offers &amp; Beauty Tips
             </h2>
             <p className="mt-3 max-w-md text-sm text-forest/70">
@@ -72,19 +72,31 @@ export function Newsletter() {
             </p>
           </div>
 
-          {/* decorative phone-ish visual */}
-          <div className="relative hidden flex-col items-center justify-center gap-4 p-8 lg:flex">
-            <p className="font-script text-2xl text-forest">
-              Beauty Tips, Delivered to You
+          {/* decorative phone mockup with brand screen + flowers */}
+          <div className="relative hidden items-center justify-center p-8 lg:flex">
+            {/* script accent above the phone */}
+            <p className="absolute -top-2 right-6 rotate-3 font-script text-2xl text-forest">
+              Beauty Tips Delivered to You
             </p>
-            <div className="flex h-60 w-48 flex-col items-center justify-center rounded-[2rem] border-4 border-white bg-forest/90 shadow-xl">
-              <span className="font-script text-4xl text-blush">A</span>
-              <p className="mt-1 font-serif text-base font-bold text-white">
-                Angels Beauty
-              </p>
-              <p className="mt-1 px-6 text-center text-[11px] text-cream/70">
-                Skincare rituals, offers &amp; more — right in your inbox.
-              </p>
+            {/* flower decorations */}
+            <span className="absolute -left-2 top-10 text-3xl" aria-hidden="true">🌸</span>
+            <span className="absolute -right-1 bottom-12 text-2xl" aria-hidden="true">🌷</span>
+            {/* phone */}
+            <div className="relative flex h-72 w-44 flex-col items-center justify-center rounded-[2.2rem] border-[6px] border-forest bg-forest shadow-2xl">
+              {/* notch */}
+              <span className="absolute left-1/2 top-2 h-1.5 w-12 -translate-x-1/2 rounded-full bg-cream/30" />
+              {/* screen */}
+              <div className="mt-3 flex h-full w-full flex-col items-center justify-center rounded-[1.6rem] bg-gradient-to-b from-blush-light/40 to-forest px-4">
+                <span className="font-script text-3xl text-blush">Angels</span>
+                <p className="font-serif text-sm font-bold text-white">Beauty</p>
+                <span className="mt-3 inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-[9px] font-semibold uppercase tracking-wider text-cream">
+                  Skincare App
+                </span>
+                <div className="mt-3 grid w-full grid-cols-2 gap-1.5">
+                  <span className="h-8 rounded-lg bg-white/15" />
+                  <span className="h-8 rounded-lg bg-white/15" />
+                </div>
+              </div>
             </div>
           </div>
         </div>

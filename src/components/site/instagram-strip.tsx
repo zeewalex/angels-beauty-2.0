@@ -7,7 +7,7 @@ export function InstagramStrip() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="max-w-xl">
-            <h2 className="flex items-center gap-2 font-serif text-2xl font-bold text-forest sm:text-3xl">
+            <h2 className="flex items-center gap-2 font-sans text-2xl font-bold text-forest sm:text-3xl">
               <Instagram size={22} className="text-forest" />
               Follow Us on Instagram
             </h2>

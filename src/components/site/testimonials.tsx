@@ -29,7 +29,7 @@ export function Testimonials() {
           <div className="max-w-xl">
             <SectionLabel>Testimonials</SectionLabel>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <h2 className="font-serif text-2xl font-bold text-forest sm:text-3xl">
+              <h2 className="font-sans text-2xl font-bold text-forest sm:text-3xl">
                 What Our Customers Say
               </h2>
               <DemoBadge />
@@ -69,10 +69,13 @@ export function Testimonials() {
                 <Heart size={15} />
               </button>
               <div className="flex items-center gap-3 pr-8">
-                <span
-                  className={`inline-flex h-12 w-12 items-center justify-center rounded-full ${t.avatarBg} font-serif text-sm font-bold text-forest`}
-                >
-                  {t.initials}
+                <span className="relative inline-block h-12 w-12 shrink-0 overflow-hidden rounded-full ring-2 ring-blush/40">
+                  <img
+                    src={t.avatar}
+                    alt={t.name}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
                 </span>
                 <div className="leading-tight">
                   <p className="text-sm font-semibold text-forest">{t.name}</p>

@@ -11,20 +11,18 @@ export function SaleBanner() {
             <img
               src="/images/banner-sale.png"
               alt="Woman applying face cream"
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
               loading="lazy"
             />
           </div>
 
-          {/* center text */}
-          <div className="px-6 py-9 text-center sm:px-10 sm:py-12">
-            <div className="flex justify-center">
-              <SectionLabel tone="green">Special Offer</SectionLabel>
-            </div>
+          {/* center text — left-aligned to match reference */}
+          <div className="px-6 py-9 text-left sm:px-10 sm:py-12">
+            <SectionLabel tone="green">Special Offer</SectionLabel>
             <h2 className="mt-3 font-serif text-3xl font-bold text-forest sm:text-4xl">
               Glow Up This Season
             </h2>
-            <p className="mx-auto mt-3 max-w-sm text-sm text-forest/70">
+            <p className="mt-3 max-w-sm text-sm text-forest/70">
               Get up to 40% OFF on selected skincare &amp; makeup products.
             </p>
             <div className="mt-5">
@@ -38,23 +36,23 @@ export function SaleBanner() {
             </div>
           </div>
 
-          {/* right splash */}
+          {/* right splash — pink blob to match reference */}
           <div className="relative flex min-h-[200px] items-center justify-center px-6 py-8 sm:min-h-[240px]">
             <div
-              className="flex h-36 w-36 items-center justify-center rounded-full bg-forest/90 text-center sm:h-44 sm:w-44"
+              className="flex h-36 w-36 items-center justify-center rounded-full bg-blush-dark text-center shadow-lg sm:h-44 sm:w-44"
               style={{
                 backgroundImage:
-                  "radial-gradient(circle at 30% 30%, rgba(247,217,220,0.6), transparent 60%)",
+                  "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), transparent 60%)",
               }}
             >
               <div className="leading-none">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-blush">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white">
                   Up to
                 </p>
                 <p className="font-serif text-5xl font-bold text-white sm:text-6xl">
                   40%
                 </p>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-blush">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white">
                   OFF
                 </p>
               </div>

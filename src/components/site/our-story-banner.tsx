@@ -35,11 +35,11 @@ export function OurStoryBanner() {
             <img
               src="/images/banner-ourstory.png"
               alt="Angels Beauty skincare bottles on a stone surface with green leaves"
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
               loading="lazy"
             />
-            {/* circular stamp */}
-            <div className="absolute bottom-5 right-5 flex h-24 w-24 items-center justify-center rounded-full border-2 border-blush/70 bg-forest/80 text-center backdrop-blur sm:h-28 sm:w-28">
+            {/* circular stamp — overlapping the photo's right edge, vertically centered */}
+            <div className="absolute right-4 top-1/2 flex h-24 w-24 -translate-y-1/2 items-center justify-center rounded-full border-2 border-blush/70 bg-forest/85 text-center shadow-lg backdrop-blur sm:h-28 sm:w-28">
               <div className="leading-tight">
                 <p className="font-script text-base text-blush sm:text-lg">Clean</p>
                 <p className="font-script text-base text-blush sm:text-lg">Natural</p>
