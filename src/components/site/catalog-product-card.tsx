@@ -16,9 +16,12 @@ function stockInfo(stock: number) {
 export function CatalogProductCard({
   product,
   className,
+  hideStock = false,
 }: {
   product: CatalogProduct;
   className?: string;
+  /** Hide the stock indicator (e.g. on homepage cards). Stock still shows on product detail. */
+  hideStock?: boolean;
 }) {
   const addToCart = useShop((s) => s.addToCart);
   const toggleWishlist = useShop((s) => s.toggleWishlist);
@@ -62,10 +65,12 @@ export function CatalogProductCard({
         >
           {product.name}
         </Link>
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <span className={cn("h-1.5 w-1.5 rounded-full", stock.dot)} />
-          <span className={cn("text-[11px] font-medium", stock.color)}>{stock.label}</span>
-        </div>
+        {!hideStock && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className={cn("h-1.5 w-1.5 rounded-full", stock.dot)} />
+            <span className={cn("text-[11px] font-medium", stock.color)}>{stock.label}</span>
+          </div>
+        )}
         <div className="mt-2 flex items-baseline gap-2">
           <span className="font-serif text-lg font-bold text-forest">
             ${product.price.toFixed(2)}

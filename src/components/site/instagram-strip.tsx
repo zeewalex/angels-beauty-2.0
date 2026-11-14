@@ -12,7 +12,7 @@ export function InstagramStrip() {
               Follow Us on Instagram
             </h2>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Get inspired. See real results. Join our beauty journey.
+              Get inspired. Join our beauty journey.
             </p>
           </div>
           <a

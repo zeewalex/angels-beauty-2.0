@@ -35,8 +35,11 @@ export function Testimonials() {
               <DemoBadge />
             </div>
             <p className="mt-1.5 text-sm text-muted-foreground">
-              Real people. Real results. Here&apos;s what they have to say about
-              Angels Beauty.
+              A preview of the reviews section for our customers.
+            </p>
+            <p className="mt-1 text-xs font-medium text-forest/70">
+              Demonstration reviews shown for layout — not real customer feedback.
+              Verified reviews will appear here once the review system is live.
             </p>
           </div>
           <div className="hidden items-center gap-2 sm:flex">

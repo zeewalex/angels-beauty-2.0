@@ -6,18 +6,17 @@ export function OurStoryBanner() {
     <section id="about" className="bg-cream py-6 sm:py-10">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="grid overflow-hidden rounded-2xl bg-forest lg:grid-cols-2">
-          {/* text */}
           <div className="relative flex flex-col justify-center p-7 sm:p-10 lg:p-14">
             <SectionLabel tone="white">Our Story</SectionLabel>
             <h2 className="mt-4 font-serif text-2xl font-semibold leading-tight text-white sm:text-3xl lg:text-4xl">
               More Than Beauty,
               <span className="block text-blush">It&apos;s Self Care</span>
             </h2>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-cream/75">
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-cream/80">
               At Angels Beauty, we believe beauty is not just about looking
               good — it&apos;s about feeling confident, empowered and connected
-              to nature. Every product is crafted with clean ingredients and
-              real care for your skin.
+              to nature. Every product is thoughtfully selected with care for
+              your beauty routine.
             </p>
             <div className="mt-6">
               <a
@@ -30,7 +29,6 @@ export function OurStoryBanner() {
             </div>
           </div>
 
-          {/* image */}
           <div className="relative min-h-[260px] overflow-hidden sm:min-h-[340px]">
             <img
               src="/images/banner-ourstory.png"
@@ -38,12 +36,11 @@ export function OurStoryBanner() {
               className="absolute inset-0 h-full w-full object-cover"
               loading="lazy"
             />
-            {/* circular stamp — overlapping the photo's right edge, vertically centered */}
+            {/* circular stamp — neutral brand mark (no product claims) */}
             <div className="absolute right-4 top-1/2 flex h-24 w-24 -translate-y-1/2 items-center justify-center rounded-full border-2 border-blush/70 bg-forest/85 text-center shadow-lg backdrop-blur sm:h-28 sm:w-28">
               <div className="leading-tight">
-                <p className="font-script text-base text-blush sm:text-lg">Clean</p>
-                <p className="font-script text-base text-blush sm:text-lg">Natural</p>
-                <p className="font-script text-base text-blush sm:text-lg">Effective</p>
+                <p className="font-script text-lg text-blush sm:text-xl">Glow</p>
+                <p className="font-script text-lg text-blush sm:text-xl">Naturally</p>
               </div>
             </div>
           </div>

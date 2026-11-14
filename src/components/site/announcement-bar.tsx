@@ -1,8 +1,8 @@
-import { Truck, Heart, RefreshCcw } from "lucide-react";
+import { Truck, Sparkles, RefreshCcw } from "lucide-react";
 
 const items = [
   { icon: Truck, text: "Free Shipping on Orders Over $50" },
-  { icon: Heart, text: "Trusted by 200K+ Beauty Lovers" },
+  { icon: Sparkles, text: "New Season Collection Now Live" },
   { icon: RefreshCcw, text: "Easy Returns & Exchanges" },
 ];
 
@@ -19,7 +19,6 @@ function MobileHeadline() {
 export function AnnouncementBar() {
   return (
     <div className="bg-forest-dark text-cream">
-      {/* Desktop: three evenly spaced items */}
       <div className="mx-auto hidden max-w-7xl items-center justify-between px-6 py-2 text-[11px] font-medium tracking-wide sm:flex">
         {items.map((it, i) => (
           <span key={i} className="flex items-center gap-1.5">
@@ -28,7 +27,6 @@ export function AnnouncementBar() {
           </span>
         ))}
       </div>
-      {/* Mobile: single centered headline (cleaner than a marquee) */}
       <div className="flex items-center justify-center py-2 sm:hidden">
         <MobileHeadline />
       </div>

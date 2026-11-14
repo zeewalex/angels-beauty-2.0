@@ -30,8 +30,8 @@ export function Hero() {
                 <span className="text-blush">Healthy Skin</span>
               </h1>
               <p className="mt-5 max-w-sm text-sm leading-relaxed text-cream/80">
-                Discover premium skincare, makeup and beauty essentials made
-                for your natural glow. Because you deserve the best.
+                Discover skincare, makeup and beauty essentials made for your
+                natural glow. Because you deserve to feel your best.
               </p>
               <div className="mt-6">
                 <a

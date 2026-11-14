@@ -43,8 +43,8 @@ export function Newsletter() {
               Get Exclusive Offers &amp; Beauty Tips
             </h2>
             <p className="mt-3 max-w-md text-sm text-forest/70">
-              Be the first to know about new arrivals, special discounts and
-              expert skincare advice — delivered with love.
+              Be the first to know about new arrivals and beauty tips —
+              delivered with love.
             </p>
             <form
               onSubmit={subscribe}

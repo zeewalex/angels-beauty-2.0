@@ -1,26 +1,26 @@
-import { Leaf, Stethoscope, Recycle, Users } from "lucide-react";
+import { Sparkles, ShieldCheck, Truck, Users } from "lucide-react";
 import { SectionLabel } from "./ui-bits";
 
 const reasons = [
   {
-    icon: Leaf,
-    title: "Clean Ingredients",
-    sub: "Safe for your skin",
+    icon: Sparkles,
+    title: "Curated Selection",
+    sub: "Thoughtfully chosen essentials",
   },
   {
-    icon: Stethoscope,
-    title: "Dermatologist Tested",
-    sub: "Gentle & effective",
+    icon: ShieldCheck,
+    title: "Secure Checkout",
+    sub: "Protected payments",
   },
   {
-    icon: Recycle,
-    title: "Sustainable Beauty",
-    sub: "Better for the planet",
+    icon: Truck,
+    title: "Fast Delivery",
+    sub: "Ships in 2–4 days",
   },
   {
     icon: Users,
     title: "Beauty for All",
-    sub: "All skin types & tones",
+    sub: "For every routine",
   },
 ];
 
@@ -34,11 +34,10 @@ export function WhyChooseAngels() {
             <h2 className="mt-3 font-sans text-2xl font-bold text-white sm:text-3xl">
               Why Choose Angels Beauty?
             </h2>
-            <p className="mt-2 text-sm text-cream/70">
-              Premium products. Real results. Always.
+            <p className="mt-2 text-sm text-cream/80">
+              A beauty shopping experience made for you.
             </p>
 
-            {/* single row of 4 circular icon items */}
             <div className="mt-8 grid grid-cols-2 gap-5 sm:grid-cols-4 sm:gap-6">
               {reasons.map((r) => (
                 <div key={r.title} className="flex flex-col items-center text-center">
@@ -46,7 +45,7 @@ export function WhyChooseAngels() {
                     <r.icon size={26} />
                   </span>
                   <p className="mt-3 text-sm font-semibold text-white">{r.title}</p>
-                  <p className="mt-0.5 text-xs text-cream/70">{r.sub}</p>
+                  <p className="mt-0.5 text-xs text-cream/80">{r.sub}</p>
                 </div>
               ))}
             </div>

@@ -36,8 +36,8 @@ export function SiteFooter() {
           <div>
             <Logo variant="light" />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-cream/70">
-              Natural Beauty. Real You. Premium skincare, makeup and beauty
-              essentials crafted with clean ingredients for your natural glow.
+              Natural Beauty. Real You. Skincare, makeup and beauty
+              essentials, thoughtfully selected for your daily routine.
             </p>
             <div className="mt-5 flex items-center gap-2">
               {[Facebook, Instagram, PinterestIcon, Youtube].map((Icon, i) => (
