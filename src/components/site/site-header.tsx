@@ -1,15 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Search, Heart, ShoppingBag, Menu, X, ChevronDown } from "lucide-react";
 import { Logo } from "./logo";
-import { navLinks, demoCategories } from "@/lib/demo-data";
+import { navLinks } from "@/lib/demo-data";
+import { catalogCategories } from "@/lib/catalog";
 import { useShop } from "@/lib/shop-store";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+function isActive(href: string, pathname: string) {
+  if (href === "/") return pathname === "/";
+  if (href === "/shop")
+    return pathname === "/shop" || pathname.startsWith("/category") || pathname.startsWith("/product");
+  return pathname === href;
+}
+
 export function SiteHeader() {
+  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const cartCount = useShop((s) => s.cart.reduce((n, c) => n + c.qty, 0));
@@ -39,42 +50,47 @@ export function SiteHeader() {
           >
             <Menu size={22} />
           </button>
-          <a href="#home" aria-label="Angels Beauty home">
+          <Link href="/" aria-label="Angels Beauty home">
             <Logo />
-          </a>
+          </Link>
         </div>
 
         {/* Center: nav */}
         <nav className="hidden items-center gap-7 lg:flex">
-          {navLinks.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              className={cn(
-                "relative text-[13px] font-medium text-forest transition-colors hover:text-forest-light",
-                link.active && "font-semibold",
-              )}
-            >
-              <span className="flex items-center gap-1">
-                {link.label}
-                {link.hasDropdown && <ChevronDown size={13} className="opacity-60" />}
-              </span>
-              {link.active && (
-                <span className="absolute -bottom-1.5 left-0 h-0.5 w-full rounded-full bg-forest" />
-              )}
-            </a>
-          ))}
+          {navLinks.map((link) => {
+            const active = isActive(link.href, pathname);
+            return (
+              <Link
+                key={link.label}
+                href={link.href}
+                className={cn(
+                  "relative text-[13px] font-medium text-forest transition-colors hover:text-forest-light",
+                  active && "font-semibold",
+                )}
+              >
+                <span className="flex items-center gap-1">
+                  {link.label}
+                  {link.hasDropdown && <ChevronDown size={13} className="opacity-60" />}
+                </span>
+                {active && (
+                  <span className="absolute -bottom-1.5 left-0 h-0.5 w-full rounded-full bg-forest" />
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Right: actions */}
         <div className="flex items-center gap-1 sm:gap-2">
-          <button
+          <Link
+            href="/shop"
             className="inline-flex h-10 w-10 items-center justify-center rounded-full text-forest hover:bg-forest/5"
-            aria-label="Search"
+            aria-label="Search products"
           >
             <Search size={20} />
-          </button>
-          <button
+          </Link>
+          <Link
+            href="/shop"
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-forest hover:bg-forest/5"
             aria-label="Wishlist"
           >
@@ -87,8 +103,9 @@ export function SiteHeader() {
                 {wishlistCount}
               </span>
             )}
-          </button>
-          <button
+          </Link>
+          <Link
+            href="/shop"
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-forest transition-colors hover:bg-forest/5"
             aria-label="Cart"
           >
@@ -101,7 +118,7 @@ export function SiteHeader() {
                 {cartCount}
               </span>
             )}
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -124,35 +141,40 @@ export function SiteHeader() {
             </Button>
           </SheetHeader>
           <nav className="flex flex-col px-3 py-4">
-            {navLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-forest hover:bg-forest/5",
-                  link.active && "bg-forest/5 font-semibold",
-                )}
-              >
-                {link.label}
-                {link.hasDropdown && <ChevronDown size={15} />}
-              </a>
-            ))}
+            {navLinks.map((link) => {
+              const active = isActive(link.href, pathname);
+              return (
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={cn(
+                    "flex items-center justify-between rounded-xl px-4 py-3 text-sm font-medium text-forest hover:bg-forest/5",
+                    active && "bg-forest/5 font-semibold",
+                  )}
+                >
+                  {link.label}
+                  {link.hasDropdown && <ChevronDown size={15} />}
+                </Link>
+              );
+            })}
             <div className="mt-3 border-t border-border pt-3">
               <p className="px-4 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Categories
               </p>
-              {demoCategories.map((c) => (
-                <a
-                  key={c.id}
-                  href="#categories"
-                  onClick={() => setMobileOpen(false)}
-                  className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm text-forest hover:bg-forest/5"
-                >
-                  {c.name}
-                  <span className="text-[11px] text-muted-foreground">{c.count}</span>
-                </a>
-              ))}
+              <div className="max-h-72 overflow-y-auto scrollbar-blush pr-1">
+                {catalogCategories.map((c) => (
+                  <Link
+                    key={c.slug}
+                    href={`/category/${c.slug}`}
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-between rounded-xl px-4 py-2.5 text-sm text-forest hover:bg-forest/5"
+                  >
+                    {c.name}
+                    <span className="text-[11px] text-muted-foreground">{c.count}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
           </nav>
         </SheetContent>

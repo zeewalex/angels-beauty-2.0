@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <rect width="400" height="400" fill="#f9e8e6"/>
+  <g fill="none" stroke="#1b4332" stroke-width="2" opacity="0.35">
+    <path d="M200 90c0 0-60 40-60 95a60 60 0 0 0 120 0c0-55-60-95-60-95Z" fill="#2d6a4f" opacity="0.25"/>
+  </g>
+  <text x="200" y="230" font-family="Georgia, serif" font-size="26" font-weight="700" fill="#1b4332" text-anchor="middle">Angels</text>
+  <text x="200" y="255" font-family="cursive" font-size="20" fill="#e8b4b8" text-anchor="middle">Beauty</text>
+  <text x="200" y="300" font-family="Arial, sans-serif" font-size="13" fill="#6b6b6b" text-anchor="middle">Image coming soon</text>
+</svg>

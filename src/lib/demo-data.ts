@@ -211,10 +211,10 @@ export const instagramImages = [
 ];
 
 export const navLinks = [
-  { label: "Home", href: "#home", active: true },
-  { label: "Shop", href: "#shop" },
-  { label: "Categories", href: "#categories", hasDropdown: true },
+  { label: "Home", href: "/" },
+  { label: "Shop", href: "/shop" },
+  { label: "Categories", href: "/shop", hasDropdown: true },
   { label: "About", href: "#about" },
-  { label: "Blog", href: "#blog" },
-  { label: "Contact", href: "#contact" },
+  { label: "Blog", href: "#" },
+  { label: "Contact", href: "#" },
 ];
