@@ -2,7 +2,7 @@
 
 **Status:** Revised after client architecture corrections. Pending client approval before Phase 1 Task 2 (remaining pages) and Phase 2 (backend) begin.
 **Database:** Isolated local PostgreSQL 17 dev database — **not** connected to, and never modifies, the existing production Supabase database or the live Angels Beauty website.
-**Schema status:** Complete, validated, and migrated to the dev database (see §6). Field-level mapping to existing Supabase tables will be confirmed during the read-only inventory (§5) — no destructive changes will be made to existing data.
+**Schema status:** Complete, validated, and migrated to the dev database (see §6). Field-level mapping to the existing catalog will be confirmed from the **client-provided product CSV** (72 products, 12 category slugs) — see §5. No destructive changes will be made to existing Supabase or Cloudinary data.
 
 ---
 
@@ -12,12 +12,12 @@ This revision incorporates all 10 client architecture corrections:
 
 | # | Correction | How it is addressed |
 |---|---|---|
-| 1 | Read-only inventory of existing Supabase + Cloudinary **before** finalizing schema | §5 — inventory script + template provided; credentials requested; schema is complete but mapping to existing tables is confirmed during inventory with no destructive ops. |
+| 1 | Read-only inventory of existing Supabase + Cloudinary **before** finalizing schema | §5 — revised: client provides the **product CSV** (72 products / 12 slugs) + Cloudinary has 200 assets to match in Phase 3. **No service-role credentials requested.** No connection to original Supabase/Cloudinary from dev. |
 | 2 | Isolated PostgreSQL dev DB (not SQLite) | §4 — local PostgreSQL 17 on port 5433, database `angels_dev`, fully isolated. SQLite is no longer used. |
 | 3 | Complete Prisma schema, validated, with migrations | §6 — 23 models, all relationships/constraints/indexes validated; initial migration `20261114152704_init` applied to dev DB. |
 | 4 | Server-side authorization on **every** protected endpoint + server action (not middleware alone) | §8 — `requireRole()`/`requireSession()` helpers called inside every route handler and server action; middleware is defense-in-depth only. |
 | 5 | Preserve guest checkout (no account required) | §7 + §9 — `Order.userId` optional, guest email captured, cart supports anonymous sessions, checkout works without login. |
-| 6 | Safe checkout: server-side price verification, inventory protection, idempotent payments, verified webhooks, safe transactions | §9 — full pipeline with `$transaction`, price recompute, inventory reserve/commit with optimistic lock, idempotency keys, signature-verified webhooks. |
+| 6 | Safe checkout: server-side price verification, inventory protection, idempotent payments, verified webhooks, safe transactions | §9 — **revised:** pending orders created in a short DB transaction; Clover processed **outside** the transaction with idempotency keys; order state advanced by verified webhooks + a payment-recovery job. No long-running transaction during payment. |
 | 7 | Dedicated image-management operations (price/variant/shipping edits can't erase images) | §10 — `ProductImage` is a separate model with its own CRUD endpoints; product/variant/price/shipping update operations never touch image rows. |
 | 8 | Preserve historical orders when products/variants archived | §6 + §11 — soft-archive (`status`, `archivedAt`), never hard delete; `OrderItem` stores a full snapshot; FKs use `Restrict`. |
 | 9 | Security, backup, logging, monitoring, rollback | §12 — audit log, webhook log, input validation, rate limiting, secrets management, backup strategy, logging/monitoring, migration + deploy rollback. |
@@ -106,28 +106,48 @@ This revision incorporates all 10 client architecture corrections:
 
 **Why Postgres, not SQLite:** the client correction requires building on the same engine we will ship to production (Supabase Postgres), eliminating the risk and schema drift of a late SQLite→Postgres switch. Prisma features used here (enums, `Json`, `Decimal`, native arrays, FK constraints) are all Postgres-native.
 
+### 4.1 Persistence, reproducibility, and backup
+
+**Honest answer on persistence:** the running PostgreSQL process survives dev-server restarts (it is a separate process from Next.js). It does **NOT** survive a full sandbox/environment reset — a reset recreates the environment and wipes `~/pg` and `~/pgdata`.
+
+**What DOES persist (in the project repo, survives resets):**
+- `prisma/schema.prisma` — the schema (source of truth).
+- `prisma/migrations/` — versioned migrations.
+- `scripts/setup-dev-postgres.sh` — reproduces the no-root Postgres install + `angels_dev` DB (idempotent).
+- `scripts/dev-db-backup.sh` / `scripts/dev-db-restore.sh` — dump/restore dev data.
+
+**Recovery after an environment reset (fully reproducible):**
+1. `bash scripts/setup-dev-postgres.sh` — recreate Postgres + empty `angels_dev`.
+2. `bunx prisma migrate deploy` — recreate the schema from migrations.
+3. (optional) `bash scripts/dev-db-restore.sh db/backups/<latest>.sql.gz` — reload dev/seed data.
+
+**Backup process (run periodically and before risky changes):**
+- `bash scripts/dev-db-backup.sh` — gzipped `pg_dump` to `db/backups/angels_dev_<timestamp>.sql.gz`. A baseline backup has already been taken.
+- For real safety against a sandbox reset, copy the generated backup out of the sandbox (commit it or download it) — the schema + migrations always survive in the repo regardless.
+
+Because the schema and migrations are the persistent source of truth, the dev database is fully reconstructable; no irreplaceable data lives only in the running dev DB.
+
 ---
 
-## 5. Read-only data inventory (correction #1)
+## 5. Catalog inventory & mapping (correction #1 — revised: CSV-based, no service-role credentials)
 
-**Status: not yet executed — credentials required from the client.**
+**Approach (revised per client):** the original Supabase database is accessible on the client's side, and the **Product table has been exported — 72 products across 12 category slugs**. The client will provide this export as a **product CSV**, which becomes the read-only source of truth for catalog mapping. The Cloudinary Media Library holds **200 assets** that will be matched to products during Phase 3.
 
-I checked the environment: **no Supabase or Cloudinary credentials are present** (the previous Angels Beauty development project was deleted, and no credentials remain in env vars or `.env`). Therefore the read-only inventory cannot be run yet.
+**No Supabase service-role credentials are requested.** No connection to the original Supabase or Cloudinary accounts is made from this dev environment.
 
-**What I need from you (minimum-privilege, read-only):**
-- **Supabase:** either (a) a read-only Postgres connection string to the existing project, or (b) the project URL + a **read-only** service role / anon key with SELECT access only. If you prefer not to share credentials, you can run the provided script yourself and send me the JSON report.
-- **Cloudinary:** cloud name + API key + API secret (read-only usage: `resources` listing only; no uploads/deletes).
+**What this gives us:**
+- 72 products + 12 category slugs → drives the catalog reference for Phase 1 Task 2 (storefront pages) and the field-level mapping to `Product` / `Category` / `ProductVariant` in §6.
+- 200 Cloudinary assets → matched to products during Phase 3 image wiring (existing assets reused; none deleted/overwritten).
 
-**What the inventory will do (strictly read-only):**
-- Supabase: list tables, row counts per table, column types, sample rows (first 3), and existing constraints/indexes — for products, categories, variants, orders, and any related tables.
-- Cloudinary: list resource counts by type/tag/folder, and a sample of asset public IDs + URLs — to confirm whether existing product images are still present.
+**What we will NOT do:**
+- No connection to the original Supabase or Cloudinary accounts from this dev environment.
+- No writes, schema changes, deletes, or overwrites to existing Supabase or Cloudinary data.
+- No service-role credentials stored in the project.
 
-**What the inventory will NOT do:**
-- No `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, or any write operation.
-- No uploads, deletions, or transformations to Cloudinary assets.
-- No schema changes to Supabase.
-
-**Deliverables:** the inventory script (`scripts/read-only-inventory.ts`, §14) and an empty report template (`download/SUPABASE-CLOUDINARY-INVENTORY-TEMPLATE.md`). Once you provide credentials (or run the script), I will fill the report and finalize any field-level mapping between existing Supabase tables and the schema in §6 — **without modifying existing data**.
+**Deliverables:**
+- `download/SUPABASE-CLOUDINARY-INVENTORY-TEMPLATE.md` — mapping report structure (filled from the CSV you send).
+- `scripts/read-only-inventory.ts` — retained as an **optional** tool if a live read-only GET audit is ever preferred; it is **not required** and is **not being run**.
+- Field-level mapping between the CSV columns and the Prisma schema will be produced and approved before any catalog data is imported (Phase 3), with no destructive changes.
 
 ---
 
@@ -200,19 +220,40 @@ This means even if middleware were bypassed or misconfigured, each handler indep
 
 ---
 
-## 9. Checkout pipeline (correction #6 — safe by construction)
+## 9. Checkout pipeline (correction #6 — revised: Clover OUTSIDE the DB transaction)
 
-The checkout flow runs as a single Prisma `$transaction` with the following stages:
+**Principle:** the slow, external Clover payment call is **never** held inside a long-running Prisma database transaction. Orders are created in a `PENDING` state in a short transaction; payment is processed **outside** the transaction with idempotency; order state is advanced by verified webhooks plus a payment-recovery job.
 
-1. **Validate cart** — load cart items, confirm each variant is `ACTIVE` (not archived), confirm `trackInventory` + available quantity.
-2. **Server-side price verification** — recompute every line total from the **database** `ProductVariant.priceCents` (never trust client-submitted prices). Recompute subtotal, discount (from a verified `Promotion`), shipping (from EasyPost rate or flat rule), tax. The client-submitted total is compared; any mismatch aborts the transaction.
-3. **Inventory protection** — atomically increment `Inventory.reservedQty` (with optimistic-lock `version` check) for each line. If available drops below the requested quantity, abort.
-4. **Idempotent payment** — check `Payment.idempotencyKey`; if already processed, return the existing result. Otherwise create a Clover charge server-side with that key. On success, record `providerPaymentId`; on failure, roll back the reservation.
-5. **Create order** — insert `Order` (status `CONFIRMED`, `paymentStatus` `PAID`), `OrderItem` rows with the **snapshot**, `CouponRedemption`, and link `Payment`.
-6. **Commit inventory** — convert `reservedQty` into actual `quantity` deduction; decrement stock.
-7. **Webhook safety** — Clover/EasyPost webhooks update order/shipment status only after **signature verification** and **idempotent** processing (checked via `WebhookEvent.externalId`).
+**Stage 1 — Create pending order (short DB transaction, DB-only writes):**
+A single, fast Prisma `$transaction` containing only database writes (no external calls):
+1. Validate cart — each variant `ACTIVE` (not archived), `trackInventory` + available qty.
+2. **Server-side price verification** — recompute every line from DB `ProductVariant.priceCents` (never trust client prices); recompute subtotal, discount (verified `Promotion`), shipping (EasyPost rate or flat rule), tax; mismatch ⇒ abort.
+3. **Inventory reserve** — atomically increment `Inventory.reservedQty` with optimistic-lock `version` check; insufficient ⇒ abort.
+4. Insert `Order` (status `PENDING`, `paymentStatus` `PENDING`), `OrderItem` snapshot rows, `CouponRedemption`, and a `Payment` row (status `PENDING`, unique `idempotencyKey`, `amountCents`).
+5. Commit the transaction. Return the pending order + idempotency key to the client.
 
-If any stage fails, the transaction rolls back: no partial orders, no orphaned inventory holds, no duplicate charges.
+This transaction is short and DB-only, so it holds no connection while waiting on the network.
+
+**Stage 2 — Process payment (OUTSIDE any transaction):**
+6. Call Clover server-side with the `idempotencyKey`. If the key was already used, Clover returns the original result (no duplicate charge). Record `providerPaymentId` + the sanitized response on the `Payment` row.
+7. Update `Payment.status` (`AUTHORIZED`/`PAID`/`FAILED`). On success, flip `Order.paymentStatus` → `PAID` and `Order.status` → `CONFIRMED`, then commit inventory (decrement `quantity`, decrement `reservedQty`) — each its own short update.
+8. On hard failure, mark `Payment.status = FAILED`, leave the order `PENDING`, and release the inventory reservation.
+
+**Stage 3 — Verified webhooks (source of truth for state transitions):**
+9. Clover/EasyPost webhooks update order/shipment/payment status only after **signature verification** and **idempotent** processing (`WebhookEvent.externalId` unique per provider). Webhooks reconcile any state the synchronous call missed (e.g. a charge that succeeded after a client timeout).
+
+**Stage 4 — Payment recovery (reconciles anything missed):**
+10. A scheduled job queries `Order` where `status = PENDING AND paymentStatus = PENDING AND createdAt < now − N minutes` (indexed via `@@index([status])` + `@@index([createdAt])`). For each, it queries Clover by `idempotencyKey`/`providerPaymentId`:
+    - paid ⇒ advance order to `CONFIRMED`, commit inventory;
+    - failed/absent ⇒ release the reservation, mark `Payment = FAILED`, cancel or notify.
+11. Inventory reservations held past a TTL without a settled payment are released by the same job.
+
+**Guarantees:**
+- No long-running transaction during payment — DB connections are never held while waiting on Clover/the network.
+- No duplicate charges — idempotency key on every payment attempt.
+- No orphaned inventory — reservations are either committed (on confirmed payment) or released (on failure/timeout).
+- No lost orders — pending orders are always reconciled by webhooks or the recovery job.
+- Orders are never silently half-written — the pending-order transaction is atomic; later state transitions are individual, logged (`AuditLog`) updates.
 
 ---
 
