@@ -41,35 +41,42 @@ export async function POST(req: Request, { params }: { params: Promise<{ orderNu
   const now = new Date();
 
   if (outcome === "success") {
-    await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
+      // Race-safe: only confirm if STILL PENDING/PENDING (a concurrent expiry
+      // may have just cancelled it). Conditional update acquires the row lock.
+      const settled = await tx.order.updateMany({
+        where: { id: order.id, status: "PENDING", paymentStatus: "PENDING" },
+        data: { status: "CONFIRMED", paymentStatus: "PAID" },
+      });
+      if (settled.count === 0) return { raced: true } as const;
       for (const it of order.items) {
         await commitInventory(tx, it.variantId, it.quantity);
       }
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: "CONFIRMED", paymentStatus: "PAID" },
-      });
       await tx.payment.updateMany({
         where: { orderId: order.id, status: "PENDING" },
         data: { status: "PAID", processedAt: now },
       });
+      return { raced: false } as const;
     });
+    if (result.raced) return NextResponse.json({ ok: false, message: "Order is no longer pending (settled by another path)." });
     return NextResponse.json({ ok: true, outcome: "success", status: "CONFIRMED", paymentStatus: "PAID" });
   } else {
-    // failure
-    await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
+      const settled = await tx.order.updateMany({
+        where: { id: order.id, status: "PENDING", paymentStatus: "PENDING" },
+        data: { status: "CANCELLED", paymentStatus: "FAILED", cancelledAt: now },
+      });
+      if (settled.count === 0) return { raced: true } as const;
       for (const it of order.items) {
         await releaseInventory(tx, it.variantId, it.quantity);
       }
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: "CANCELLED", paymentStatus: "FAILED", cancelledAt: now },
-      });
       await tx.payment.updateMany({
         where: { orderId: order.id, status: "PENDING" },
         data: { status: "FAILED", processedAt: now, failureReason: "Simulated payment failure" },
       });
+      return { raced: false } as const;
     });
+    if (result.raced) return NextResponse.json({ ok: false, message: "Order is no longer pending (settled by another path)." });
     return NextResponse.json({ ok: true, outcome: "failure", status: "CANCELLED", paymentStatus: "FAILED" });
   }
 }

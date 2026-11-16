@@ -83,13 +83,16 @@ export async function releaseExpiredReservations(): Promise<{ released: number }
 
   for (const order of expired) {
     await db.$transaction(async (tx) => {
+      // Race-safe: only cancel if STILL PENDING/PENDING (a concurrent payment
+      // success may have just confirmed it). Conditional update acquires the row lock.
+      const settled = await tx.order.updateMany({
+        where: { id: order.id, status: "PENDING", paymentStatus: "PENDING" },
+        data: { status: "CANCELLED", paymentStatus: "FAILED", cancelledAt: now },
+      });
+      if (settled.count === 0) return; // already settled by another path — do nothing
       for (const it of order.items) {
         await releaseInventory(tx, it.variantId, it.quantity);
       }
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: "CANCELLED", paymentStatus: "FAILED", cancelledAt: now },
-      });
       await tx.payment.updateMany({
         where: { orderId: order.id, status: "PENDING" },
         data: { status: "FAILED", failureReason: "Reservation expired (no payment)" },
