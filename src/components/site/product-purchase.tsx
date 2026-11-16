@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Minus, Plus, ShoppingBag, Heart, Truck, ShieldCheck } from "lucide-react";
-import { useShop } from "@/lib/shop-store";
+import { useCart } from "@/lib/cart-client";
+import { useWishlist } from "@/lib/wishlist-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { CatalogProduct } from "@/lib/catalog";
@@ -15,12 +16,13 @@ function stockInfo(stock: number) {
 
 export function ProductPurchase({ product }: { product: CatalogProduct }) {
   const [qty, setQty] = useState(1);
-  const addToCart = useShop((s) => s.addToCart);
-  const toggleWishlist = useShop((s) => s.toggleWishlist);
-  const isWished = useShop((s) => s.wishlist.includes(product.id));
+  const [adding, setAdding] = useState(false);
+  const { addItem } = useCart();
+  const { isWished, toggle: toggleWishlist } = useWishlist();
   const stock = stockInfo(product.stock);
   const outOfStock = product.stock <= 0;
   const img = product.images[0] ?? "/images/product-placeholder.svg";
+  const variantId = `v-${product.id}`;
 
   return (
     <div className="flex flex-col">
@@ -63,27 +65,30 @@ export function ProductPurchase({ product }: { product: CatalogProduct }) {
         </div>
 
         <button
-          onClick={() => {
+          onClick={async () => {
             if (outOfStock) {
               toast.error("This item is currently out of stock.");
               return;
             }
-            for (let i = 0; i < qty; i++) {
-              addToCart({ id: product.id, name: product.name, price: product.price, image: img });
-            }
-            toast.success(`${qty} × ${product.name} added to cart`);
+            setAdding(true);
+            const res = await addItem(variantId, qty);
+            setAdding(false);
+            if (res.ok) toast.success(`${qty} × ${product.name} added to cart`);
+            else toast.error(res.message);
           }}
-          disabled={outOfStock}
+          disabled={outOfStock || adding}
           className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-forest px-6 text-sm font-semibold text-white transition-colors hover:bg-forest-light disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ShoppingBag size={17} />
-          {outOfStock ? "Out of Stock" : "Add to Cart"}
+          {outOfStock ? "Out of Stock" : adding ? "Adding…" : "Add to Cart"}
         </button>
 
         <button
-          onClick={() => {
-            toggleWishlist(product.id);
-            toast.success(isWished ? "Removed from wishlist" : "Added to wishlist");
+          onClick={async () => {
+            const res = await toggleWishlist(product.id, product.name);
+            if (res.guest) toast.info(res.message);
+            else if (res.ok) toast.success(isWished ? "Removed from wishlist" : "Added to wishlist");
+            else toast.error(res.message || "Could not update wishlist.");
           }}
           className={cn(
             "inline-flex h-12 w-12 items-center justify-center rounded-full border border-border bg-white text-forest transition-colors hover:bg-blush/10",

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Heart, ArrowRight } from "lucide-react";
-import { useShop } from "@/lib/shop-store";
+import { useCart } from "@/lib/cart-client";
+import { useWishlist } from "@/lib/wishlist-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { CatalogProduct } from "@/lib/catalog";
@@ -23,11 +24,11 @@ export function CatalogProductCard({
   /** Hide the stock indicator (e.g. on homepage cards). Stock still shows on product detail. */
   hideStock?: boolean;
 }) {
-  const addToCart = useShop((s) => s.addToCart);
-  const toggleWishlist = useShop((s) => s.toggleWishlist);
-  const isWished = useShop((s) => s.wishlist.includes(product.id));
+  const { addItem } = useCart();
+  const { isWished, toggle: toggleWishlist } = useWishlist();
   const stock = stockInfo(product.stock);
   const img = product.images[0] ?? "/images/product-placeholder.svg";
+  const variantId = `v-${product.id}`;
 
   return (
     <div
@@ -45,9 +46,11 @@ export function CatalogProductCard({
         />
       </Link>
       <button
-        onClick={() => {
-          toggleWishlist(product.id);
-          toast.success(isWished ? "Removed from wishlist" : "Added to wishlist");
+        onClick={async () => {
+          const res = await toggleWishlist(product.id, product.name);
+          if (res.guest) toast.info(res.message);
+          else if (res.ok) toast.success(isWished ? "Removed from wishlist" : "Added to wishlist");
+          else toast.error(res.message || "Could not update wishlist.");
         }}
         className={cn(
           "absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-forest shadow-sm backdrop-blur transition-colors hover:bg-white",
@@ -82,18 +85,14 @@ export function CatalogProductCard({
           )}
         </div>
         <button
-          onClick={() => {
+          onClick={async () => {
             if (product.stock <= 0) {
               toast.error("This item is currently out of stock.");
               return;
             }
-            addToCart({
-              id: product.id,
-              name: product.name,
-              price: product.price,
-              image: img,
-            });
-            toast.success(`${product.name} added to cart`);
+            const res = await addItem(variantId, 1);
+            if (res.ok) toast.success(`${product.name} added to cart`);
+            else toast.error(res.message);
           }}
           disabled={product.stock <= 0}
           className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-forest px-4 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-forest-light disabled:cursor-not-allowed disabled:opacity-50"

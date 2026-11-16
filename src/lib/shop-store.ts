@@ -13,23 +13,27 @@ type CartItem = {
 type ShopStore = {
   cart: CartItem[];
   wishlist: string[];
+  serverCartCount: number; // synced from the server cart API (shared across components)
+  serverWishCount: number; // synced from the server wishlist API (authed users)
   addToCart: (item: Omit<CartItem, "qty">) => void;
   removeFromCart: (id: string) => void;
   cartCount: () => number;
+  setServerCartCount: (n: number) => void;
+  setServerWishCount: (n: number) => void;
   toggleWishlist: (id: string) => void;
   isWished: (id: string) => boolean;
 };
 
 /**
- * In-memory demo shop store for the Phase 1 homepage build.
- *
- * NOTE: This is temporary demo state. It is intentionally NOT persisted so
- * that server and client first-render match (no hydration mismatch). Real
- * cart/account state will be backed by Supabase + server sessions in Phase 3.
+ * Client UI store. The cart + wishlist are server-backed (Phase 2);
+ * `serverCartCount` / `serverWishCount` are synced from the server APIs so the
+ * header badge updates across components when any component mutates the cart.
  */
 export const useShop = create<ShopStore>((set, get) => ({
   cart: [],
   wishlist: [],
+  serverCartCount: 0,
+  serverWishCount: 0,
   addToCart: (item) =>
     set((s) => {
       const existing = s.cart.find((c) => c.id === item.id);
@@ -45,6 +49,8 @@ export const useShop = create<ShopStore>((set, get) => ({
   removeFromCart: (id) =>
     set((s) => ({ cart: s.cart.filter((c) => c.id !== id) })),
   cartCount: () => get().cart.reduce((n, c) => n + c.qty, 0),
+  setServerCartCount: (n) => set({ serverCartCount: n }),
+  setServerWishCount: (n) => set({ serverWishCount: n }),
   toggleWishlist: (id) =>
     set((s) => ({
       wishlist: s.wishlist.includes(id)

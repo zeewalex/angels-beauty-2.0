@@ -8,6 +8,7 @@ import { Logo } from "./logo";
 import { navLinks } from "@/lib/demo-data";
 import { catalogCategories } from "@/lib/catalog";
 import { useShop } from "@/lib/shop-store";
+import { useCart } from "@/lib/cart-client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,8 +24,11 @@ export function SiteHeader() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const cartCount = useShop((s) => s.cart.reduce((n, c) => n + c.qty, 0));
-  const wishlistCount = useShop((s) => s.wishlist.length);
+  useCart(); // trigger server cart fetch + sync count to the shared store
+  const cartCount = useShop((s) => s.serverCartCount);
+  const wishlistCount = useShop((s) =>
+    s.serverWishCount > 0 ? s.serverWishCount : s.wishlist.length,
+  );
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -90,7 +94,7 @@ export function SiteHeader() {
             <Search size={20} />
           </Link>
           <Link
-            href="/shop"
+            href="/wishlist"
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-forest hover:bg-forest/5"
             aria-label="Wishlist"
           >
@@ -105,7 +109,7 @@ export function SiteHeader() {
             )}
           </Link>
           <Link
-            href="/shop"
+            href="/cart"
             className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-forest transition-colors hover:bg-forest/5"
             aria-label="Cart"
           >
