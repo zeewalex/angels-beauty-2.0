@@ -38,6 +38,8 @@ export default function LoginPage() {
       setServerError("Incorrect email or password.");
       return;
     }
+    // Merge any guest cart into the now-authenticated user's cart.
+    await fetch("/api/cart/merge", { method: "POST" }).catch(() => {});
     router.push(callbackUrl);
     router.refresh();
   }

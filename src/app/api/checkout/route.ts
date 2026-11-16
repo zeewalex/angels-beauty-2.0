@@ -4,20 +4,46 @@ import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { resolveCart, loadCart } from "@/lib/cart-server";
 import { checkoutSchema, errorResponse } from "@/lib/schemas";
+import { reserveInventory, RESERVATION_TTL_MS } from "@/lib/inventory";
 
 /**
- * POST /api/checkout — guest/authed checkout.
+ * POST /api/checkout — guest/authed checkout (PENDING order, NO payment).
  *
- * SECURITY (per requirements):
- *  - Prices are recomputed SERVER-SIDE from the DB (never trusted from client).
- *  - Stock validated SERVER-SIDE before the order is created.
- *  - No payment card details are stored.
- *  - No live Clover/EasyPost calls (Phase 3). Order is created PENDING.
+ * LIFECYCLE (per approved architecture):
+ *  - Creates a PENDING order with a PENDING payment (idempotency key).
+ *  - RESERVES inventory (reservedQty += qty) — does NOT deduct quantity.
+ *  - Sets reservationExpiresAt (now + 30 min). If no payment arrives, the
+ *    reservation is released by releaseExpiredReservations().
+ *  - Order becomes CONFIRMED/PAID only when a verified payment result arrives
+ *    (Phase 3 Clover; for now the dev simulate-payment endpoint).
  *
- * Creates the order + snapshot items + addresses in a single $transaction,
- * deducts inventory, and clears the cart.
+ * IDEMPOTENCY: pass `Idempotency-Key` header (or body.idempotencyKey). If an
+ * order already exists for that key, the existing order is returned (no duplicate).
+ *
+ * SECURITY: prices + stock recomputed server-side from the DB; no card data;
+ * no live Clover/EasyPost.
  */
 export async function POST(req: Request) {
+  const idempotencyKey =
+    req.headers.get("Idempotency-Key") ||
+    (await req.clone().json().catch(() => ({}))).idempotencyKey ||
+    `auto-${randomBytes(8).toString("hex")}`;
+
+  // Idempotency: if an order with this payment idempotency key exists, return it.
+  const existingPayment = await db.payment.findUnique({
+    where: { idempotencyKey },
+    select: { orderId: true, status: true },
+  });
+  if (existingPayment) {
+    const existingOrder = await db.order.findUnique({
+      where: { id: existingPayment.orderId },
+      select: { orderNumber: true, totalCents: true, status: true, paymentStatus: true },
+    });
+    if (existingOrder) {
+      return NextResponse.json({ ok: true, idempotentReplay: true, ...existingOrder });
+    }
+  }
+
   const body = await req.json().catch(() => null);
   if (!body) return errorResponse("Invalid request body", 400);
   const parsed = checkoutSchema.safeParse(body);
@@ -29,7 +55,6 @@ export async function POST(req: Request) {
   const { email, shipping, billingSameAsShipping, billing, customerNote } = parsed.data;
   const session = await getSession();
 
-  // Load cart (server source of truth)
   const cart = await loadCart();
   if (cart.items.length === 0) return errorResponse("Your cart is empty.", 400);
 
@@ -47,9 +72,10 @@ export async function POST(req: Request) {
     if (!v || !v.isActive || v.archivedAt || v.product.status !== "ACTIVE") {
       return errorResponse(`${item.name} is no longer available.`, 409);
     }
-    const available = v.inventory?.quantity ?? 0;
-    if (v.inventory?.trackInventory && item.quantity > available) {
-      return errorResponse(`Only ${available} of ${v.product.name} in stock.`, 409);
+    const inv = v.inventory;
+    const available = inv ? inv.quantity - inv.reservedQty : 0; // available = quantity - reserved
+    if (inv?.trackInventory && item.quantity > available) {
+      return errorResponse(`Only ${available} of ${v.product.name} available (some stock is reserved).`, 409);
     }
     const unitCents = v.priceCents; // SERVER-SIDE price
     const lineCents = unitCents * item.quantity;
@@ -61,17 +87,16 @@ export async function POST(req: Request) {
     });
   }
 
-  // Shipping (flat rule — EasyPost in Phase 3) + tax (0 for now)
   const shippingCents = subtotalCents >= 5000 ? 0 : 599;
   const taxCents = 0;
   const totalCents = subtotalCents + shippingCents + taxCents;
 
   const orderNumber = `AB-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
   const { cart: cartRef } = await resolveCart();
+  const reservationExpiresAt = new Date(Date.now() + RESERVATION_TTL_MS);
 
   try {
     const order = await db.$transaction(async (tx) => {
-      // addresses
       const shipAddr = await tx.address.create({
         data: { ...shipping, userId: session?.user.id ?? null, isDefault: false },
       });
@@ -84,7 +109,7 @@ export async function POST(req: Request) {
           orderNumber,
           userId: session?.user.id ?? null,
           email,
-          status: "PENDING",
+          status: "PENDING", // NOT confirmed — payment pending
           fulfillmentStatus: "UNFULFILLED",
           paymentStatus: "PENDING",
           subtotalCents,
@@ -94,6 +119,7 @@ export async function POST(req: Request) {
           shippingAddressId: shipAddr.id,
           billingAddressId: billAddr.id,
           customerNote,
+          reservationExpiresAt,
           placedAt: new Date(),
           items: { create: lines.map((l) => ({
             variantId: l.variantId, productId: l.productId,
@@ -102,19 +128,19 @@ export async function POST(req: Request) {
           })) },
           payments: { create: [{
             provider: "CLOVER",
-            idempotencyKey: orderNumber,
+            idempotencyKey,
             amountCents: totalCents,
-            status: "PENDING",
+            status: "PENDING", // NOT paid — no provider result yet
           }] },
         },
       });
 
-      // deduct inventory (Phase 2: direct decrement; Phase 3 moves to reserve+commit-on-payment)
+      // RESERVE inventory (atomic conditional update; abort if insufficient)
       for (const l of lines) {
-        await tx.inventory.update({
-          where: { variantId: l.variantId },
-          data: { quantity: { decrement: l.quantity } },
-        });
+        const ok = await reserveInventory(tx, l.variantId, l.quantity);
+        if (!ok) {
+          throw new Error(`INSUFFICIENT_STOCK:${l.variantId}:${l.name}`);
+        }
       }
 
       // clear the cart
@@ -123,9 +149,21 @@ export async function POST(req: Request) {
       return created;
     });
 
-    return NextResponse.json({ ok: true, orderNumber: order.orderNumber, totalCents });
+    return NextResponse.json({
+      ok: true,
+      orderNumber: order.orderNumber,
+      totalCents,
+      status: "PENDING",
+      paymentStatus: "PENDING",
+      reservationExpiresAt: reservationExpiresAt.toISOString(),
+    });
   } catch (e) {
-    console.error("Checkout failed:", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.startsWith("INSUFFICIENT_STOCK")) {
+      const name = msg.split(":").slice(2).join(":");
+      return errorResponse(`Not enough stock for ${name}. Please reduce the quantity and try again.`, 409);
+    }
+    console.error("Checkout failed:", msg);
     return errorResponse("Checkout failed. Please try again.", 500);
   }
 }

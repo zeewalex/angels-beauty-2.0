@@ -300,6 +300,7 @@ model Order {
   customerNote      String?
   placedAt          DateTime?
   cancelledAt       DateTime?
+  reservationExpiresAt DateTime? // when the inventory reservation expires (PENDING payment)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -307,6 +308,7 @@ model Order {
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
+  @@index([status, reservationExpiresAt])
 }
 
 enum OrderStatus {

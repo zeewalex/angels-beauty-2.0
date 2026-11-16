@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CheckCircle2, ArrowRight, Mail } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, ArrowRight, Mail, Package } from "lucide-react";
 import { StorefrontShell } from "@/components/site/storefront-shell";
+import { OrderPaymentActions } from "@/components/site/order-payment-actions";
 import { db } from "@/lib/db";
 
 export default async function ConfirmationPage({
@@ -16,13 +17,26 @@ export default async function ConfirmationPage({
   });
   if (!order) notFound();
 
+  const isDev = process.env.NODE_ENV !== "production";
+  const paid = order.paymentStatus === "PAID" && order.status === "CONFIRMED";
+  const failed = order.paymentStatus === "FAILED" || order.status === "CANCELLED";
+  const pending = !paid && !failed;
+
+  const banner = paid
+    ? { icon: CheckCircle2, color: "text-forest-light", title: "Payment Successful", sub: "Your order is confirmed and will be processed." }
+    : failed
+    ? { icon: XCircle, color: "text-red-600", title: "Payment Failed", sub: "Your reservation was released. You can place a new order from your cart." }
+    : { icon: Clock, color: "text-amber-600", title: "Payment Pending", sub: "Your items are reserved. Complete payment to confirm your order." };
+
+  const BannerIcon = banner.icon;
+
   return (
     <StorefrontShell>
       <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 sm:py-16">
         <div className="rounded-2xl border border-border bg-white p-6 text-center sm:p-10">
-          <CheckCircle2 size={48} className="mx-auto text-forest-light" />
-          <h1 className="mt-4 font-serif text-3xl font-bold text-forest">Order Received</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Thank you! Your order has been placed.</p>
+          <BannerIcon size={48} className={`mx-auto ${banner.color}`} />
+          <h1 className="mt-4 font-serif text-3xl font-bold text-forest">{banner.title}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{banner.sub}</p>
 
           <div className="mt-6 rounded-xl bg-cream p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Order number</p>
@@ -30,10 +44,22 @@ export default async function ConfirmationPage({
           </div>
 
           <dl className="mt-6 space-y-2 text-sm">
-            <div className="flex justify-between"><dt className="text-muted-foreground">Status</dt><dd className="font-medium text-forest capitalize">{order.status.toLowerCase()} · payment pending</dd></div>
+            <div className="flex justify-between"><dt className="text-muted-foreground">Order status</dt><dd className="font-medium text-forest capitalize">{order.status.toLowerCase()}</dd></div>
+            <div className="flex justify-between"><dt className="text-muted-foreground">Payment</dt>
+              <dd className={`font-medium capitalize ${paid ? "text-forest-light" : failed ? "text-red-600" : "text-amber-600"}`}>
+                {order.paymentStatus.toLowerCase().replace("_", " ")}
+              </dd>
+            </div>
             <div className="flex justify-between"><dt className="text-muted-foreground">Email</dt><dd className="text-forest">{order.email}</dd></div>
             <div className="flex justify-between border-t border-border pt-2"><dt className="font-semibold text-forest">Total</dt><dd className="font-serif text-lg font-bold text-forest">${(order.totalCents / 100).toFixed(2)}</dd></div>
           </dl>
+
+          {pending && (
+            <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <Clock size={12} className="mr-1 inline" />
+              Reservation holds your items for 30 minutes. If payment isn&apos;t completed, the order is cancelled and stock is released.
+            </p>
+          )}
 
           <ul className="mt-6 space-y-2 text-left">
             {order.items.map((it) => (
@@ -44,6 +70,8 @@ export default async function ConfirmationPage({
             ))}
           </ul>
 
+          {pending && isDev && <OrderPaymentActions orderNumber={order.orderNumber} />}
+
           <div className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <Mail size={13} /> A confirmation will be emailed when payment processing is live (Phase 3).
           </div>
@@ -52,7 +80,9 @@ export default async function ConfirmationPage({
             <Link href="/shop" className="inline-flex items-center gap-1.5 rounded-full bg-forest px-5 py-2.5 text-sm font-semibold text-white hover:bg-forest-light">
               Continue Shopping <ArrowRight size={15} />
             </Link>
-            <Link href="/account/orders" className="text-sm font-medium text-forest hover:text-forest-light">View my orders</Link>
+            <Link href="/account/orders" className="inline-flex items-center gap-1.5 text-sm font-medium text-forest hover:text-forest-light">
+              <Package size={14} /> View my orders
+            </Link>
           </div>
         </div>
       </div>
