@@ -19,6 +19,7 @@ type Form = {
   billingSameAsShipping: boolean;
   billing: { firstName: string; lastName: string; line1: string; line2: string; city: string; state: string; postalCode: string; country: string; phone: string };
   customerNote: string;
+  couponCode: string;
 };
 
 const emptyAddr = { firstName: "", lastName: "", line1: "", line2: "", city: "", state: "", postalCode: "", country: "", phone: "" };
@@ -27,7 +28,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { cart } = useCart();
   const [form, setForm] = useState<Form>({
-    email: "", shipping: { ...emptyAddr }, billingSameAsShipping: true, billing: { ...emptyAddr }, customerNote: "",
+    email: "", shipping: { ...emptyAddr }, billingSameAsShipping: true, billing: { ...emptyAddr }, customerNote: "", couponCode: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -63,7 +64,7 @@ export default function CheckoutPage() {
     if (Object.keys(newErrors).length) { setErrors(newErrors); toast.error("Please correct the highlighted fields."); return; }
 
     setLoading(true);
-    const payload = { ...form, billing: form.billingSameAsShipping ? undefined : form.billing };
+    const payload = { ...form, billing: form.billingSameAsShipping ? undefined : form.billing, couponCode: form.couponCode || undefined };
     const res = await fetch("/api/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -171,6 +172,11 @@ export default function CheckoutPage() {
                 </li>
               ))}
             </ul>
+            <div className="mt-4">
+              <Label htmlFor="couponCode">Coupon code (optional)</Label>
+              <Input id="couponCode" value={form.couponCode} onChange={(e) => setForm({ ...form, couponCode: e.target.value })} className="mt-1" placeholder="e.g. SAVE10" />
+              {errors.couponCode && <p className="mt-1 text-xs text-red-600">{errors.couponCode}</p>}
+            </div>
             <dl className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
               <div className="flex justify-between"><dt className="text-muted-foreground">Subtotal</dt><dd className="text-forest">${subtotal.toFixed(2)}</dd></div>
               <div className="flex justify-between"><dt className="text-muted-foreground">Shipping</dt><dd className="text-forest">{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</dd></div>
