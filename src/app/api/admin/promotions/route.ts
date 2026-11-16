@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { checkOrigin } from "@/lib/csrf";
 import { errorResponse } from "@/lib/schemas";
 
 const createSchema = z.object({
@@ -15,9 +16,10 @@ const createSchema = z.object({
   isActive: z.boolean().default(false), // must be authorized true to actually display
 });
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const promotions = await db.promotion.findMany({ orderBy: { createdAt: "desc" }, take: 100 });
   return NextResponse.json({ promotions });
 }
@@ -25,6 +27,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return errorResponse("Invalid promotion.", 400);

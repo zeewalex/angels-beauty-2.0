@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { checkOrigin } from "@/lib/csrf";
 import { errorResponse } from "@/lib/schemas";
 
 /**
@@ -12,9 +13,10 @@ import { errorResponse } from "@/lib/schemas";
  */
 
 /** GET /api/admin/products/[id]/images — list a product's images. */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const images = await db.productImage.findMany({ where: { productId: id }, orderBy: { sortOrder: "asc" } });
   return NextResponse.json({ images });
@@ -26,6 +28,7 @@ const addSchema = z.object({ url: z.string().url(), altText: z.string().max(200)
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = addSchema.safeParse(body);

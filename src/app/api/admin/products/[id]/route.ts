@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { checkOrigin } from "@/lib/csrf";
 import { errorResponse } from "@/lib/schemas";
 
 const patchSchema = z.object({
@@ -21,9 +22,10 @@ const variantSchema = z.object({
 });
 
 /** GET /api/admin/products/[id] — product detail with variants + images. */
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const product = await db.product.findUnique({
     where: { id },
@@ -37,6 +39,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = patchSchema.safeParse(body);
@@ -52,6 +55,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
@@ -75,6 +79,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = variantSchema.safeParse(body);

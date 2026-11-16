@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { checkOrigin } from "@/lib/csrf";
 import { errorResponse } from "@/lib/schemas";
 
 const patchSchema = z.object({ isPrimary: z.boolean().optional(), altText: z.string().max(200).optional(), sortOrder: z.number().int().optional() });
@@ -11,6 +12,7 @@ const patchSchema = z.object({ isPrimary: z.boolean().optional(), altText: z.str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = patchSchema.safeParse(body);
@@ -29,6 +31,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const img = await db.productImage.findUnique({ where: { id }, include: { product: { select: { name: true } } } });
   if (!img) return errorResponse("Image not found.", 404);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/session";
 import { logAudit } from "@/lib/audit";
+import { checkOrigin } from "@/lib/csrf";
 import { errorResponse } from "@/lib/schemas";
 
 const patchSchema = z.object({
@@ -10,11 +11,12 @@ const patchSchema = z.object({
   notes: z.string().max(2000).optional(),
   // paymentStatus is intentionally NOT accepted here — payment status only
   // changes via a verified payment result (Phase 3 webhook / dev simulate).
-});
+}).strict(); // reject unknown keys (e.g. paymentStatus)
 
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const order = await db.order.findUnique({
     where: { id },
@@ -27,6 +29,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
+  if (!checkOrigin(req)) return errorResponse("Forbidden (CSRF).", 403);
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = patchSchema.safeParse(body);

@@ -55,6 +55,7 @@ export const checkoutSchema = z.object({
   billingSameAsShipping: z.boolean().default(true),
   billing: addressSchema.optional(),
   customerNote: z.string().max(500).optional(),
+  couponCode: z.string().max(60).optional(),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 

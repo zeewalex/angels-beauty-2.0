@@ -7,7 +7,7 @@ import { errorResponse } from "@/lib/schemas";
 
 const createSchema = z.object({ name: z.string().min(1).max(80), slug: z.string().min(1).max(80).optional() });
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await requireRole("ADMIN");
   if (!session) return errorResponse("Admin access required.", 403);
   const categories = await db.category.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { products: true } } } });

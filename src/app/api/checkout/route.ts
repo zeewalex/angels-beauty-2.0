@@ -89,7 +89,39 @@ export async function POST(req: Request) {
 
   const shippingCents = subtotalCents >= 5000 ? 0 : 599;
   const taxCents = 0;
-  const totalCents = subtotalCents + shippingCents + taxCents;
+
+  // --- Promotion validation (only active + authorized + in-date promotions apply) ---
+  let discountCents = 0;
+  let appliedPromoId: string | null = null;
+  let appliedPromoCode: string | null = null;
+  let appliedShippingCents = shippingCents;
+  if (parsed.data.couponCode) {
+    const code = parsed.data.couponCode.trim().toUpperCase();
+    const now = new Date();
+    const promo = await db.promotion.findFirst({
+      where: {
+        code,
+        isActive: true,
+        authorizedBy: { not: null }, // must be authorized
+        startsAt: { lte: now },
+        endsAt: { gte: now },
+      },
+    });
+    if (!promo) return errorResponse("This coupon code is invalid, expired, or not authorized.", 400, { couponCode: "Invalid coupon" });
+    if (promo.usageLimit !== null && promo.usageCount >= promo.usageLimit) {
+      return errorResponse("This coupon has reached its usage limit.", 400, { couponCode: "Usage limit reached" });
+    }
+    if (promo.type === "PERCENTAGE") {
+      discountCents = Math.round((subtotalCents * promo.value) / 100);
+    } else if (promo.type === "FIXED_AMOUNT") {
+      discountCents = Math.min(promo.value, subtotalCents);
+    } else if (promo.type === "FREE_SHIPPING") {
+      appliedShippingCents = 0;
+    }
+    appliedPromoId = promo.id;
+    appliedPromoCode = promo.code ?? code;
+  }
+  const totalCents = subtotalCents - discountCents + appliedShippingCents + taxCents;
 
   const orderNumber = `AB-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString("hex").toUpperCase()}`;
   const { cart: cartRef } = await resolveCart();
@@ -113,7 +145,8 @@ export async function POST(req: Request) {
           fulfillmentStatus: "UNFULFILLED",
           paymentStatus: "PENDING",
           subtotalCents,
-          shippingCents,
+          discountCents,
+          shippingCents: appliedShippingCents,
           taxCents,
           totalCents,
           shippingAddressId: shipAddr.id,
@@ -145,6 +178,14 @@ export async function POST(req: Request) {
 
       // clear the cart
       await tx.cartItem.deleteMany({ where: { cartId: cartRef.id } });
+
+      // record coupon redemption + increment usage (only authorized, in-date promotions reach here)
+      if (appliedPromoId) {
+        await tx.couponRedemption.create({
+          data: { orderId: created.id, promotionId: appliedPromoId, code: appliedPromoCode ?? "", discountCents },
+        });
+        await tx.promotion.update({ where: { id: appliedPromoId }, data: { usageCount: { increment: 1 } } });
+      }
 
       return created;
     });
