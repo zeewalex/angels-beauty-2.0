@@ -63,10 +63,11 @@ export default function CheckoutPage() {
     if (Object.keys(newErrors).length) { setErrors(newErrors); toast.error("Please correct the highlighted fields."); return; }
 
     setLoading(true);
+    const payload = { ...form, billing: form.billingSameAsShipping ? undefined : form.billing };
     const res = await fetch("/api/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
