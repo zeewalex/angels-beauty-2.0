@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { resolveCart, loadCart } from "@/lib/cart-server";
 import { checkoutSchema, errorResponse } from "@/lib/schemas";
 import { reserveInventory, RESERVATION_TTL_MS } from "@/lib/inventory";
+import { sendOrderReceiptEmail } from "@/lib/email";
 
 /**
  * POST /api/checkout — guest/authed checkout (PENDING order, NO payment).
@@ -196,6 +197,8 @@ export async function POST(req: Request) {
       return created;
     });
 
+    // Send order receipt email (idempotent — won't duplicate).
+    await sendOrderReceiptEmail(email, order.orderNumber, totalCents).catch(() => {});
     return NextResponse.json({
       ok: true,
       orderNumber: order.orderNumber,
