@@ -56,6 +56,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ orderNu
         where: { orderId: order.id, status: "PENDING" },
         data: { status: "PAID", processedAt: now },
       });
+      // Finalize coupon usage (was reserved at checkout, now counted).
+      const redemptions = await tx.couponRedemption.findMany({ where: { orderId: order.id }, select: { promotionId: true } });
+      for (const r of redemptions) {
+        await tx.promotion.update({ where: { id: r.promotionId }, data: { usageCount: { increment: 1 } } });
+      }
       return { raced: false } as const;
     });
     if (result.raced) return NextResponse.json({ ok: false, message: "Order is no longer pending (settled by another path)." });
@@ -74,6 +79,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ orderNu
         where: { orderId: order.id, status: "PENDING" },
         data: { status: "FAILED", processedAt: now, failureReason: "Simulated payment failure" },
       });
+      // Release coupon reservation (delete the pending redemption).
+      await tx.couponRedemption.deleteMany({ where: { orderId: order.id } });
       return { raced: false } as const;
     });
     if (result.raced) return NextResponse.json({ ok: false, message: "Order is no longer pending (settled by another path)." });

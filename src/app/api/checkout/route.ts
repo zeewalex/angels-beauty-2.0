@@ -108,8 +108,13 @@ export async function POST(req: Request) {
       },
     });
     if (!promo) return errorResponse("This coupon code is invalid, expired, or not authorized.", 400, { couponCode: "Invalid coupon" });
-    if (promo.usageLimit !== null && promo.usageCount >= promo.usageLimit) {
-      return errorResponse("This coupon has reached its usage limit.", 400, { couponCode: "Usage limit reached" });
+    // Usage limit counts ALL redemptions (pending + finalized) so unpaid orders
+    // don't let extra coupons through during the reservation window.
+    if (promo.usageLimit !== null) {
+      const redemptionCount = await db.couponRedemption.count({ where: { promotionId: promo.id } });
+      if (redemptionCount >= promo.usageLimit) {
+        return errorResponse("This coupon has reached its usage limit.", 400, { couponCode: "Usage limit reached" });
+      }
     }
     if (promo.type === "PERCENTAGE") {
       discountCents = Math.round((subtotalCents * promo.value) / 100);
@@ -179,12 +184,13 @@ export async function POST(req: Request) {
       // clear the cart
       await tx.cartItem.deleteMany({ where: { cartId: cartRef.id } });
 
-      // record coupon redemption + increment usage (only authorized, in-date promotions reach here)
+      // Record coupon redemption as PENDING — usage is NOT finalized yet.
+      // Finalized on verified payment success; released (deleted) on failure/expiry.
       if (appliedPromoId) {
         await tx.couponRedemption.create({
           data: { orderId: created.id, promotionId: appliedPromoId, code: appliedPromoCode ?? "", discountCents },
         });
-        await tx.promotion.update({ where: { id: appliedPromoId }, data: { usageCount: { increment: 1 } } });
+        // NOTE: usageCount is NOT incremented here — only on payment success.
       }
 
       return created;

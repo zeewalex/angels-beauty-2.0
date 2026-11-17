@@ -31,6 +31,7 @@ function check(name: string, cond: boolean, detail = "") {
 
 async function main() {
   console.log("Phase 2 — automated security + checkout tests\n");
+  const { db } = await import("../src/lib/db");
 
   // ---- 1. Idempotent checkout (duplicate submission) ----
   console.log("[1] Idempotent checkout (duplicate submission)");
@@ -47,15 +48,22 @@ async function main() {
 
   // ---- 2. Stock limit ----
   console.log("[2] Stock limit enforcement");
-  // qty 99 passes the schema (max 99) but exceeds available stock (~97) → 409
-  const over = await req("/api/cart/items", { method: "POST", body: JSON.stringify({ variantId: "v-cmtezpxpw0000l704gunqgthq", quantity: 99 }), saveJar: "stock" });
-  check("qty > available stock rejected (409)", over.status === 409, `got ${over.status} ${JSON.stringify(over.data)}`);
+  // Find a variant with low stock and try to add more than available.
+  const lowStockVariant = await db.inventory.findFirst({
+    where: { trackInventory: true, quantity: { gt: 0 } },
+    orderBy: { quantity: "asc" },
+    select: { variantId: true, quantity: true },
+  });
+  const testVariantId = lowStockVariant?.variantId ?? "v-cmtezpxpw0000l704gunqgthq";
+  const testStock = lowStockVariant?.quantity ?? 1;
+  const overQty = Math.min(testStock + 10, 99); // exceeds stock but within schema max 99
+  const over = await req("/api/cart/items", { method: "POST", body: JSON.stringify({ variantId: testVariantId, quantity: overQty }), saveJar: "stock" });
+  check(`qty (${overQty}) > stock (${testStock}) rejected (409)`, over.status === 409, `got ${over.status} ${JSON.stringify(over.data)}`);
 
   // ---- 3. Simultaneous checkout (race on limited stock) ----
   console.log("[3] Simultaneous checkout (low-stock race)");
   const raceVariant = "v-cmtezpxpw0000l704gunqgthq";
   // Query available stock (quantity - reservedQty) to size the race qty.
-  const { db } = await import("../src/lib/db");
   const inv = await db.inventory.findUnique({ where: { variantId: raceVariant }, select: { quantity: true, reservedQty: true } });
   const available = inv ? inv.quantity - inv.reservedQty : 0;
   // qty > available/2 but <= available → one checkout reserves, the other is rejected.
@@ -70,7 +78,6 @@ async function main() {
   const wins = (rA.status === 200 ? 1 : 0) + (rB.status === 200 ? 1 : 0);
   check("no over-reservation (at most one succeeded)", wins <= 1, `A=${rA.status} B=${rB.status} wins=${wins}`);
   check("at least one rejected by stock (409)", rA.status === 409 || rB.status === 409, `A=${rA.status} B=${rB.status} (available=${available}, qty=${raceQty})`);
-  await db.$disconnect();
   const winner = rA.data?.orderNumber ?? rB.data?.orderNumber;
   if (winner) await req(`/api/checkout/${winner}/simulate-payment`, { method: "POST", body: JSON.stringify({ outcome: "failure" }) });
 
@@ -113,6 +120,7 @@ async function main() {
     await req(`/api/checkout/${pc.data.orderNumber}/simulate-payment`, { method: "POST", body: JSON.stringify({ outcome: "failure" }), jar: "pending" });
   }
 
+  await db.$disconnect();
   console.log(`\nResults: ${passed} passed, ${failed} failed.`);
   process.exit(failed > 0 ? 1 : 0);
 }

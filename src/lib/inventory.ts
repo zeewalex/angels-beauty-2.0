@@ -93,6 +93,8 @@ export async function releaseExpiredReservations(): Promise<{ released: number }
       for (const it of order.items) {
         await releaseInventory(tx, it.variantId, it.quantity);
       }
+      // Release coupon reservation (delete pending redemption).
+      await tx.couponRedemption.deleteMany({ where: { orderId: order.id } });
       await tx.payment.updateMany({
         where: { orderId: order.id, status: "PENDING" },
         data: { status: "FAILED", failureReason: "Reservation expired (no payment)" },
