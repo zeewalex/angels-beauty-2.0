@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { commitInventory, releaseInventory } from "@/lib/inventory";
+import { sendPaymentSuccessReceipt, sendPaymentFailureEmail } from "@/lib/email";
 import { errorResponse } from "@/lib/schemas";
 
 /**
@@ -64,6 +65,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ orderNu
       return { raced: false } as const;
     });
     if (result.raced) return NextResponse.json({ ok: false, message: "Order is no longer pending (settled by another path)." });
+    // Send verified-payment receipt (only after confirmed payment).
+    await sendPaymentSuccessReceipt(order.email, order.orderNumber, order.totalCents).catch(() => {});
     return NextResponse.json({ ok: true, outcome: "success", status: "CONFIRMED", paymentStatus: "PAID" });
   } else {
     const result = await db.$transaction(async (tx) => {
@@ -84,6 +87,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ orderNu
       return { raced: false } as const;
     });
     if (result.raced) return NextResponse.json({ ok: false, message: "Order is no longer pending (settled by another path)." });
+    // Send payment failure email.
+    await sendPaymentFailureEmail(order.email, order.orderNumber).catch(() => {});
     return NextResponse.json({ ok: true, outcome: "failure", status: "CANCELLED", paymentStatus: "FAILED" });
   }
 }

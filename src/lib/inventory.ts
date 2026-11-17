@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { checkCloverPaymentStatus } from "@/lib/clover";
 
 /**
  * Inventory reservation lifecycle.
@@ -82,23 +83,35 @@ export async function releaseExpiredReservations(): Promise<{ released: number }
   if (expired.length === 0) return { released: 0 };
 
   for (const order of expired) {
+    // PAYMENT RECONCILIATION: check the provider's payment state before cancelling.
+    const payment = await db.payment.findFirst({ where: { orderId: order.id, status: "PENDING" }, select: { providerPaymentId: true } });
+    if (payment?.providerPaymentId) {
+      const providerStatus = await checkCloverPaymentStatus(payment.providerPaymentId);
+      if (providerStatus === "paid") {
+        // Provider confirms payment — confirm instead of cancelling.
+        await db.$transaction(async (tx) => {
+          const settled = await tx.order.updateMany({
+            where: { id: order.id, status: "PENDING", paymentStatus: "PENDING" },
+            data: { status: "CONFIRMED", paymentStatus: "PAID" },
+          });
+          if (settled.count === 0) return;
+          for (const it of order.items) { await commitInventory(tx, it.variantId, it.quantity); }
+          const redemptions = await tx.couponRedemption.findMany({ where: { orderId: order.id }, select: { promotionId: true } });
+          for (const r of redemptions) { await tx.promotion.update({ where: { id: r.promotionId }, data: { usageCount: { increment: 1 } } }); }
+          await tx.payment.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "PAID", processedAt: now } });
+        });
+        continue;
+      }
+    }
     await db.$transaction(async (tx) => {
-      // Race-safe: only cancel if STILL PENDING/PENDING (a concurrent payment
-      // success may have just confirmed it). Conditional update acquires the row lock.
       const settled = await tx.order.updateMany({
         where: { id: order.id, status: "PENDING", paymentStatus: "PENDING" },
         data: { status: "CANCELLED", paymentStatus: "FAILED", cancelledAt: now },
       });
-      if (settled.count === 0) return; // already settled by another path — do nothing
-      for (const it of order.items) {
-        await releaseInventory(tx, it.variantId, it.quantity);
-      }
-      // Release coupon reservation (delete pending redemption).
+      if (settled.count === 0) return;
+      for (const it of order.items) { await releaseInventory(tx, it.variantId, it.quantity); }
       await tx.couponRedemption.deleteMany({ where: { orderId: order.id } });
-      await tx.payment.updateMany({
-        where: { orderId: order.id, status: "PENDING" },
-        data: { status: "FAILED", failureReason: "Reservation expired (no payment)" },
-      });
+      await tx.payment.updateMany({ where: { orderId: order.id, status: "PENDING" }, data: { status: "FAILED", failureReason: "Reservation expired (no payment)" } });
     });
   }
   return { released: expired.length };

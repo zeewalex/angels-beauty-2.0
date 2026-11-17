@@ -14,6 +14,13 @@
 const EMAIL_FROM = process.env.EMAIL_FROM || "noreply@angelsbeauty.shop";
 const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || "console";
 
+/** In production, missing email config must NOT silently fall back to console. */
+function requireEmailCreds(): void {
+  if (process.env.NODE_ENV === "production" && EMAIL_PROVIDER === "console") {
+    throw new Error("EMAIL_PROVIDER and EMAIL_API_KEY are required in production. Email is disabled without them.");
+  }
+}
+
 const sentKeys = new Set<string>();
 
 type EmailParams = { to: string; subject: string; html: string; idempotencyKey: string };
@@ -31,6 +38,7 @@ async function sendViaProvider(params: EmailParams) {
 }
 
 export async function sendEmail(params: EmailParams): Promise<{ ok: boolean }> {
+  requireEmailCreds();
   // Idempotency: don't send the same notification twice.
   if (sentKeys.has(params.idempotencyKey)) {
     return { ok: true }; // already sent
@@ -56,12 +64,24 @@ export async function sendPasswordResetEmail(email: string, resetUrl: string) {
   });
 }
 
-export async function sendOrderReceiptEmail(email: string, orderNumber: string, totalCents: number) {
+// NOTE: sendOrderReceiptEmail is the PENDING notification (sent at checkout).
+// A separate sendPaymentSuccessReceipt is sent ONLY after verified payment.
+
+export async function sendOrderPendingEmail(email: string, orderNumber: string, totalCents: number) {
   await sendEmail({
     to: email,
-    subject: `Angels Beauty — Order ${orderNumber} received`,
-    idempotencyKey: `receipt-${orderNumber}`,
-    html: `<p>Thank you for your order!</p><p>Order: ${orderNumber}</p><p>Total: $${(totalCents / 100).toFixed(2)}</p><p>Your order is pending payment confirmation.</p>`,
+    subject: `Angels Beauty — Order ${orderNumber} received (payment pending)`,
+    idempotencyKey: `pending-${orderNumber}`,
+    html: `<p>Thank you for your order!</p><p>Order: ${orderNumber}</p><p>Total: $${(totalCents / 100).toFixed(2)}</p><p><strong>Your payment is pending.</strong> Your items are reserved for 30 minutes. You'll receive a confirmation email once your payment is verified.</p>`,
+  });
+}
+
+export async function sendPaymentSuccessReceipt(email: string, orderNumber: string, totalCents: number) {
+  await sendEmail({
+    to: email,
+    subject: `Angels Beauty — Payment confirmed for order ${orderNumber}`,
+    idempotencyKey: `paid-${orderNumber}`,
+    html: `<p>Your payment has been verified and your order is confirmed!</p><p>Order: ${orderNumber}</p><p>Total: $${(totalCents / 100).toFixed(2)}</p><p>We'll notify you when your order ships.</p>`,
   });
 }
 

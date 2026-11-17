@@ -12,6 +12,13 @@ const HAS_EASYPOST = !!process.env.EASYPOST_API_KEY;
 const FLAT_RATE_CENTS = 599;
 const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
 
+/** In production, missing credentials must NOT silently fall back. */
+function requireEasyPostCreds(): void {
+  if (process.env.NODE_ENV === "production" && !HAS_EASYPOST) {
+    throw new Error("EASYPOST_API_KEY is required in production. Shipping integration is disabled without it.");
+  }
+}
+
 export type ShippingRate = {
   id: string;
   carrier: string;
@@ -34,6 +41,7 @@ export type ShippingAddress = {
  * Returns { valid, error? }.
  */
 export async function validateAddress(addr: ShippingAddress): Promise<{ valid: boolean; error?: string }> {
+  requireEasyPostCreds();
   if (!HAS_EASYPOST) return { valid: true }; // dev: accept all
   try {
     const res = await fetch("https://api.easypost.com/v2/addresses/verify", {
@@ -58,6 +66,7 @@ export async function getShippingRates(params: {
   weightOz: number;
   toAddress: ShippingAddress;
 }): Promise<ShippingRate[]> {
+  requireEasyPostCreds();
   if (!HAS_EASYPOST) {
     const free = params.subtotalCents >= FREE_SHIPPING_THRESHOLD_CENTS;
     return [{

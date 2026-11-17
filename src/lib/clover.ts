@@ -19,6 +19,13 @@
 
 const HAS_CLOVER = !!(process.env.CLOVER_API_KEY && process.env.CLOVER_MERCHANT_ID);
 
+/** In production/staging, missing credentials must NOT silently fall back. */
+function requireCloverCreds(): void {
+  if (process.env.NODE_ENV === "production" && !HAS_CLOVER) {
+    throw new Error("CLOVER_API_KEY and CLOVER_MERCHANT_ID are required in production. Payment processing is disabled without them.");
+  }
+}
+
 type ChargeResult = { ok: boolean; providerPaymentId?: string; failureReason?: string };
 
 /**
@@ -33,6 +40,7 @@ export async function createCloverCharge(params: {
   cardToken: string; // from Clover hosted fields (never the raw card number)
   email: string;
 }): Promise<ChargeResult> {
+  requireCloverCreds();
   if (!HAS_CLOVER) {
     // Dev fallback — simulate a successful charge.
     console.log(`[dev-clover] Simulated charge for ${params.idempotencyKey}: $${(params.amountCents / 100).toFixed(2)}`);
@@ -91,6 +99,28 @@ export async function createCloverRefund(params: {
     return { ok: false, failureReason: data.error?.message || "Refund failed" };
   } catch {
     return { ok: false, failureReason: "Refund request error" };
+  }
+}
+
+/**
+ * Query the Clover API for a charge's status (for payment reconciliation).
+ * Used by the expiry job to avoid cancelling an order whose payment succeeded
+ * but whose webhook was delayed/missing.
+ * Returns "paid" | "failed" | "pending" | "unknown".
+ */
+export async function checkCloverPaymentStatus(providerPaymentId: string): Promise<"paid" | "failed" | "pending" | "unknown"> {
+  if (!HAS_CLOVER) return "unknown"; // dev: can't verify → let expiry proceed
+  try {
+    const res = await fetch(`${process.env.CLOVER_BASE_URL}/v1/charges/${providerPaymentId}`, {
+      headers: { "Authorization": `Bearer ${process.env.CLOVER_API_KEY}` },
+    });
+    if (!res.ok) return "unknown";
+    const data = await res.json();
+    if (data.status === "succeeded" || data.status === "paid") return "paid";
+    if (data.status === "failed") return "failed";
+    return "pending";
+  } catch {
+    return "unknown";
   }
 }
 
