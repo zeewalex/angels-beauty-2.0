@@ -13,6 +13,10 @@ const items = [
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/promotions", label: "Promotions", icon: Tag },
+  { href: "/admin/hero-slides", label: "Hero Slides", icon: Tag },
+  { href: "/admin/blog", label: "Blog", icon: ScrollText },
+  { href: "/admin/faqs", label: "FAQs", icon: ScrollText },
+  { href: "/admin/support", label: "Support", icon: Users },
   { href: "/admin/audit", label: "Audit Log", icon: ScrollText },
 ];
 

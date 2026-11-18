@@ -41,8 +41,41 @@ export default async function ProductPage({
   const category = getCategoryBySlug(product.categorySlug);
   const related = getRelatedProducts(product, 4);
 
+  // Product JSON-LD structured data (no fake reviews — only real data).
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: product.description.slice(0, 300),
+    image: product.images,
+    sku: product.slug.toUpperCase().replace(/-/g, "_"),
+    brand: { "@type": "Brand", name: "Angels Beauty" },
+    category: category?.name,
+    offers: {
+      "@type": "Offer",
+      price: product.price.toFixed(2),
+      priceCurrency: "USD",
+      availability: product.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url: `${process.env.NEXTAUTH_URL || ""}/product/${product.slug}`,
+    },
+  };
+
+  // Breadcrumb JSON-LD
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "/" },
+      { "@type": "ListItem", position: 2, name: "Shop", item: "/shop" },
+      ...(category ? [{ "@type": "ListItem", position: 3, name: category.name, item: `/category/${category.slug}` }] : []),
+      { "@type": "ListItem", position: category ? 4 : 3, name: product.name, item: `/product/${product.slug}` },
+    ],
+  };
+
   return (
     <StorefrontShell>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
         <Breadcrumbs
           items={[

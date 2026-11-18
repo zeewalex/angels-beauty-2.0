@@ -18,13 +18,20 @@ function PinterestIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-const quickLinks = ["Home", "Shop", "Categories", "About Us", "Blog", "Contact"];
+const quickLinks = [
+  { label: "Home", href: "/" },
+  { label: "Shop", href: "/shop" },
+  { label: "Categories", href: "/shop" },
+  { label: "About Us", href: "/about-us" },
+  { label: "Blog", href: "/blog" },
+  { label: "Contact", href: "/contact" },
+];
 const careLinks = [
-  "Shipping Policy",
-  "Returns & Exchanges",
-  "FAQs",
-  "Track Order",
-  "Support",
+  { label: "Shipping Policy", href: "/shipping-policy" },
+  { label: "Returns & Exchanges", href: "/returns-exchanges" },
+  { label: "FAQs", href: "/faqs" },
+  { label: "Track Order", href: "/track-order" },
+  { label: "Support", href: "/support" },
 ];
 
 export function SiteFooter() {
@@ -60,12 +67,12 @@ export function SiteFooter() {
             </h3>
             <ul className="mt-4 space-y-2.5">
               {quickLinks.map((l) => (
-                <li key={l}>
+                <li key={l.href}>
                   <a
-                    href="#"
+                    href={l.href}
                     className="text-sm text-cream/70 transition-colors hover:text-blush"
                   >
-                    {l}
+                    {l.label}
                   </a>
                 </li>
               ))}
@@ -79,12 +86,12 @@ export function SiteFooter() {
             </h3>
             <ul className="mt-4 space-y-2.5">
               {careLinks.map((l) => (
-                <li key={l}>
+                <li key={l.href}>
                   <a
-                    href="#"
+                    href={l.href}
                     className="text-sm text-cream/70 transition-colors hover:text-blush"
                   >
-                    {l}
+                    {l.label}
                   </a>
                 </li>
               ))}
