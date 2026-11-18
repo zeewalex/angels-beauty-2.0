@@ -17,8 +17,11 @@ import { errorResponse } from "@/lib/schemas";
  * provider result is securely verified).
  */
 export async function POST(req: Request, { params }: { params: Promise<{ orderNumber: string }> }) {
-  if (process.env.NODE_ENV === "production") {
-    return errorResponse("Not available in production.", 404);
+  // STRICTLY development-only — blocked in staging AND production.
+  // Missing credentials in non-dev environments produce explicit errors,
+  // never simulated payments.
+  if (process.env.NODE_ENV !== "development") {
+    return errorResponse("Payment simulation is available in development only.", 404);
   }
   const { orderNumber } = await params;
   const body = await req.json().catch(() => ({}));
