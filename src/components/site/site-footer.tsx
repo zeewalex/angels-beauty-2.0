@@ -67,7 +67,7 @@ export function SiteFooter() {
             </h3>
             <ul className="mt-4 space-y-2.5">
               {quickLinks.map((l) => (
-                <li key={l.href}>
+                <li key={l.label}>
                   <a
                     href={l.href}
                     className="text-sm text-cream/70 transition-colors hover:text-blush"
@@ -86,7 +86,7 @@ export function SiteFooter() {
             </h3>
             <ul className="mt-4 space-y-2.5">
               {careLinks.map((l) => (
-                <li key={l.href}>
+                <li key={l.label}>
                   <a
                     href={l.href}
                     className="text-sm text-cream/70 transition-colors hover:text-blush"
