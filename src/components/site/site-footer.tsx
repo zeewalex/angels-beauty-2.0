@@ -41,7 +41,7 @@ export function SiteFooter() {
         <div className="grid gap-10 lg:grid-cols-4">
           {/* brand */}
           <div>
-            <Logo variant="light" />
+            <Logo variant="light" enableTapShortcut />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-cream/70">
               Natural Beauty. Real You. Skincare, makeup and beauty
               essentials, thoughtfully selected for your daily routine.

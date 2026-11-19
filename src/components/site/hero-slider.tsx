@@ -27,7 +27,6 @@ export function HeroSlider({ slides }: { slides: Slide[] }) {
     handler();
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
   }, []);
 
   const next = useCallback(() => setCurrent((c) => (c + 1) % slides.length), [slides.length]);

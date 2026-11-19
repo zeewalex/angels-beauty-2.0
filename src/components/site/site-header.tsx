@@ -54,9 +54,7 @@ export function SiteHeader() {
           >
             <Menu size={22} />
           </button>
-          <Link href="/" aria-label="Angels Beauty home">
-            <Logo />
-          </Link>
+          <Logo enableTapShortcut />
         </div>
 
         {/* Center: nav */}
@@ -132,7 +130,7 @@ export function SiteHeader() {
           <SheetHeader className="flex flex-row items-center justify-between border-b border-border px-5 py-4">
             <SheetTitle asChild>
               <div>
-                <Logo />
+                <Logo enableTapShortcut />
               </div>
             </SheetTitle>
             <Button
