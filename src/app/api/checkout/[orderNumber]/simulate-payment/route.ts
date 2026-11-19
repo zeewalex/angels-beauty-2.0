@@ -58,7 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ orderNu
       }
       await tx.payment.updateMany({
         where: { orderId: order.id, status: "PENDING" },
-        data: { status: "PAID", processedAt: now },
+        data: { status: "PAID", processedAt: now, providerPaymentId: `sim_paid_${order.orderNumber}` },
       });
       // Finalize coupon usage (was reserved at checkout, now counted).
       const redemptions = await tx.couponRedemption.findMany({ where: { orderId: order.id }, select: { promotionId: true } });
