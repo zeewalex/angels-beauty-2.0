@@ -10,7 +10,7 @@ import {
   TRUSTED_COOKIE_OPTIONS,
   validateAdminSecrets,
 } from "@/lib/trusted-device";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit, normalizeIdentifier } from "@/lib/rate-limit";
 
 /**
  * POST /api/admin/trust — one-time trusted-device enrollment.
@@ -51,10 +51,14 @@ export async function POST(req: Request) {
     );
   }
 
-  // Rate limit (DB-backed — persistent across server instances).
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  // Rate limit (DB-backed — persistent, atomic, race-safe across instances).
+  // IP is extracted safely via normalizeIdentifier (validated, not blindly
+  // trusted from arbitrary forwarded headers).
+  const ip = normalizeIdentifier(req);
   const rate = await checkRateLimit(ip);
   if (!rate.allowed) {
+    // Error message is generic — never reveals whether the email exists,
+    // whether the PIN was wrong, or any account information.
     return NextResponse.json(
       { error: "Too many attempts. Please try again later." },
       {
