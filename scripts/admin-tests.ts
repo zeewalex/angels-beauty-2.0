@@ -42,7 +42,9 @@ async function main() {
   check("customer accessing admin products → 403", custAccess.status === 403, `got ${custAccess.status}`);
 
   // ---- Sign in as admin ----
-  const adminSession = await signIn("admin@angels.dev", "adminpass123");
+  const adminEmail = process.env.STAGING_ADMIN_EMAIL || "admin@angels.dev";
+  const adminPass = process.env.STAGING_ADMIN_PASSWORD || "adminpass123";
+  const adminSession = await signIn(adminEmail, adminPass);
   check("admin sign-in succeeded", adminSession.includes("next-auth.session-token") || adminSession.includes("__Secure-"), adminSession.slice(0, 40));
 
   // ---- 3. Image preservation during product edit ----

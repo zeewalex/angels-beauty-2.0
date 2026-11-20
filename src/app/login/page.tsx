@@ -4,17 +4,12 @@ import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Mail, Lock, ArrowRight, ShieldCheck, Info } from "lucide-react";
+import { Mail, Lock, ArrowRight, ShieldCheck } from "lucide-react";
 import { AuthShell } from "@/components/site/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginSchema } from "@/lib/schemas";
-
-// DEV-ONLY seeded admin credentials (see scripts/create-admin.ts).
-// Shown only when the user is trying to reach /admin, to avoid lockout
-// during local development. Not loaded from env; hardcoded in the seed script.
-const DEV_ADMIN = { email: "admin@angels.dev", password: "adminpass123" };
 
 /** Map NextAuth error codes + our custom middleware errors to friendly text. */
 function describeError(code: string | null): { title: string; detail?: string } | null {
@@ -101,12 +96,6 @@ function LoginForm() {
     }
   }
 
-  function fillDevAdmin() {
-    setForm(DEV_ADMIN);
-    setErrors({});
-    setServerError(null);
-  }
-
   return (
     <AuthShell>
       <h1 className="font-serif text-2xl font-bold text-forest">Welcome back</h1>
@@ -159,28 +148,7 @@ function LoginForm() {
         </Button>
       </form>
 
-      {/* DEV-ONLY helper: quick-fill the seeded admin account to prevent lockout. */}
-      <div className="mt-5 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 px-3 py-3">
-        <div className="flex items-start gap-2">
-          <Info size={15} className="mt-0.5 shrink-0 text-muted-foreground" />
-          <div className="text-xs text-muted-foreground">
-            <p className="font-medium text-foreground/80">Dev admin account</p>
-            <p className="mt-1">
-              Email: <span className="font-mono text-foreground/80">{DEV_ADMIN.email}</span>
-            </p>
-            <p>
-              Password: <span className="font-mono text-foreground/80">{DEV_ADMIN.password}</span>
-            </p>
-            <button
-              type="button"
-              onClick={fillDevAdmin}
-              className="mt-2 font-medium text-forest underline-offset-2 hover:underline"
-            >
-              Auto-fill these credentials
-            </button>
-          </div>
-        </div>
-      </div>
+
     </AuthShell>
   );
 }

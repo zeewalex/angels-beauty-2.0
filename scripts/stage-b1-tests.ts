@@ -104,7 +104,9 @@ async function main() {
   // ============================================================
   console.log("\n[3] REFUND — Full + Partial");
   // ============================================================
-  const adminSession = await signIn("admin@angels.dev", "adminpass123");
+  const adminEmail = process.env.STAGING_ADMIN_EMAIL || "admin@angels.dev";
+  const adminPass = process.env.STAGING_ADMIN_PASSWORD || "adminpass123";
+  const adminSession = await signIn(adminEmail, adminPass);
   const adminHdr = { Cookie: adminSession };
 
   if (orderNum) {
