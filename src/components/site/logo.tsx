@@ -26,20 +26,38 @@ const NAV_DELAY_MS = 500;
 let navTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 /**
+ * Check the current session via a real HTTP request (cookie-attached).
+ * Returns the user's role if authenticated, or null if not.
+ *
+ * This is more reliable than next-auth/react's `useSession()` hook, which
+ * returns null on first render (status "loading") and can send an
+ * authenticated admin to the login page by mistake. A fetch always reflects
+ * the real server-side session state.
+ */
+async function fetchAdminRole(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/auth/session", { credentials: "include", cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.user?.role ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Logo component for Angels Beauty.
  *
  * Five-tap admin shortcut (when `enableTapShortcut` is set):
- *   - 5 rapid taps within 3 seconds → navigate to /admin.
+ *   - 5 rapid taps within 3 seconds → check session, then navigate.
+ *     • Valid admin session → /admin (dashboard opens immediately, no login).
+ *     • No / expired / non-admin session → /login (auth required again).
  *   - Fewer taps → navigate to the homepage (normal click behaviour).
  *
- * IMPORTANT — how auth is handled:
- *   We do NOT check the session client-side. We simply navigate to /admin and
- *   let the server-side middleware (src/middleware.ts) decide:
- *     • Valid admin session cookie → dashboard renders immediately (no login).
- *     • No / expired / non-admin session → middleware redirects to /login.
- *   This avoids the bug where `useSession()` returns null on first render
- *   (status "loading") and wrongly sends an authenticated admin to the login
- *   page. The middleware reads the real JWT from the cookie — always reliable.
+ * The session is checked via a fetch to /api/auth/session — a real HTTP
+ * request with the cookie attached. This is authoritative and avoids the
+ * stale-state bug that `useSession()` causes on first render. Auth is never
+ * bypassed: if there's no valid admin session, the user is sent to /login.
  *
  * Normal single click always navigates to the homepage (requirement #7).
  */
@@ -88,11 +106,21 @@ export function Logo({ variant = "dark", className, enableTapShortcut = false }:
         }, 400);
       }
 
-      // Navigate straight to /admin. The middleware (server-side) checks the
-      // real JWT cookie and either lets the admin in or redirects to /login.
-      // We never second-guess the session on the client.
-      toast.success("Opening admin…", { duration: 1400 });
-      router.push("/admin");
+      // Check the real session (cookie-attached fetch). This is the
+      // authoritative check — not a stale client-side cache. If the user has
+      // a valid admin session, go straight to /admin with no login prompt.
+      // If not, go to /login. Either way the user gets clear feedback.
+      toast.loading("Checking admin access…", { duration: 1500, id: "admin-tap" });
+      fetchAdminRole().then((role) => {
+        const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+        if (isAdmin) {
+          toast.success("Opening admin dashboard…", { duration: 1400, id: "admin-tap" });
+          router.push("/admin");
+        } else {
+          toast.info("Admin sign-in required", { duration: 2000, id: "admin-tap" });
+          router.push("/login?callbackUrl=/admin");
+        }
+      });
       return;
     }
 
