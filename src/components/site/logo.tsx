@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
@@ -12,50 +12,64 @@ type LogoProps = {
   enableTapShortcut?: boolean;
 };
 
+const TAP_KEY = "angels_logo_taps";
+const TAP_WINDOW_MS = 3000;
+const TAP_THRESHOLD = 5;
+const NAV_DELAY_MS = 600;
+
+// Module-level timer — survives component re-renders but not page navigations.
+// Combined with sessionStorage for the tap count, this handles the case where
+// the user clicks from a non-homepage page (first click navigates, component
+// remounts, but sessionStorage preserves the count).
+let navTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
 export function Logo({ variant = "dark", className, enableTapShortcut = false }: LogoProps) {
   const isLight = variant === "light";
   const wordColor = isLight ? "#FAF6F0" : "#1B4332";
   const subColor = isLight ? "#F2C4C2" : "#E8B4B8";
   const router = useRouter();
   const { data: session } = useSession();
-  const tapCount = useRef(0);
-  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pulseRef = useRef<HTMLDivElement>(null);
+  const elRef = useRef<HTMLDivElement>(null);
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
+  const handleClick = useCallback(() => {
     if (!enableTapShortcut) {
-      // Normal behavior — let the link navigate to "/"
+      router.push("/");
       return;
     }
 
-    // Always prevent default — we handle navigation ourselves
-    e.preventDefault();
-
-    // Cancel any pending homepage navigation
-    if (navTimer.current) {
-      clearTimeout(navTimer.current);
-      navTimer.current = null;
+    // Cancel any pending homepage navigation from a previous tap
+    if (navTimeoutId) {
+      clearTimeout(navTimeoutId);
+      navTimeoutId = null;
     }
 
-    tapCount.current += 1;
+    const now = Date.now();
 
-    // Reset counter after 3 seconds of no taps
-    if (resetTimer.current) clearTimeout(resetTimer.current);
-    resetTimer.current = setTimeout(() => {
-      tapCount.current = 0;
-    }, 3000);
+    // Read tap timestamps from sessionStorage (survives navigation/remounts)
+    let taps: number[] = [];
+    try {
+      const raw = sessionStorage.getItem(TAP_KEY);
+      if (raw) taps = JSON.parse(raw);
+    } catch {}
 
-    if (tapCount.current >= 5) {
-      // 5th tap — go to admin
-      tapCount.current = 0;
-      if (resetTimer.current) clearTimeout(resetTimer.current);
+    // Remove expired taps
+    taps = taps.filter((t) => now - t < TAP_WINDOW_MS);
+    taps.push(now);
+
+    // Persist
+    try {
+      sessionStorage.setItem(TAP_KEY, JSON.stringify(taps));
+    } catch {}
+
+    if (taps.length >= TAP_THRESHOLD) {
+      // 5 taps — trigger admin shortcut
+      try { sessionStorage.removeItem(TAP_KEY); } catch {}
 
       // Pulse feedback
-      if (pulseRef.current) {
-        pulseRef.current.style.transform = "scale(1.15)";
+      if (elRef.current) {
+        elRef.current.style.transform = "scale(1.15)";
         setTimeout(() => {
-          if (pulseRef.current) pulseRef.current.style.transform = "scale(1)";
+          if (elRef.current) elRef.current.style.transform = "scale(1)";
         }, 400);
       }
 
@@ -67,25 +81,42 @@ export function Logo({ variant = "dark", className, enableTapShortcut = false }:
         toast.info("Redirecting to admin login...", { duration: 1500 });
         router.push("/login?callbackUrl=/admin");
       }
-    } else {
-      // Taps 1-4: schedule homepage navigation after a short delay.
-      // If another tap comes before the delay fires, it's cancelled above.
-      // This means: single tap = go home (after 300ms); rapid taps = count up.
-      navTimer.current = setTimeout(() => {
-        router.push("/");
-        tapCount.current = 0;
-      }, 300);
+      return;
     }
+
+    // Fewer than 5 taps — schedule homepage navigation after a delay.
+    // The delay must be long enough for 5 rapid taps to complete (typically
+    // 400-600ms for a human), but short enough that a single tap feels
+    // responsive. 600ms is a good balance.
+    //
+    // If more taps come before this fires, the clearTimeout above cancels it.
+    navTimeoutId = setTimeout(() => {
+      navTimeoutId = null;
+      // Check if we reached 5 (in case the last tap + this timeout race)
+      let current: number[] = [];
+      try {
+        const raw = sessionStorage.getItem(TAP_KEY);
+        if (raw) current = JSON.parse(raw);
+      } catch {}
+      if (current.length < TAP_THRESHOLD) {
+        try { sessionStorage.removeItem(TAP_KEY); } catch {}
+        router.push("/");
+      }
+    }, NAV_DELAY_MS);
   }, [enableTapShortcut, session, router]);
 
   return (
-    <a
-      href="/"
+    <div
+      ref={elRef}
       onClick={handleClick}
+      role="link"
+      tabIndex={0}
       aria-label="Angels Beauty home"
+      onKeyDown={(e) => { if (e.key === "Enter") handleClick(); }}
       className={cn("flex items-center gap-2.5 select-none cursor-pointer", className)}
+      style={{ transition: "transform 0.4s ease" }}
     >
-      <span ref={pulseRef} className="relative inline-flex h-14 w-14 items-center justify-center" style={{ transition: "transform 0.4s ease" }}>
+      <span className="relative inline-flex h-14 w-14 items-center justify-center">
         <img src="/images/angels-beauty-logo.png" alt="Angels Beauty crest logo" className="h-full w-full object-contain" />
       </span>
       <span className="flex flex-col leading-none">
@@ -96,6 +127,6 @@ export function Logo({ variant = "dark", className, enableTapShortcut = false }:
           Beauty
         </span>
       </span>
-    </a>
+    </div>
   );
 }
