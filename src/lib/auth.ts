@@ -25,8 +25,28 @@ export function verifyPassword(plain: string, hash: string): Promise<boolean> {
 }
 
 export const authOptions: NextAuthOptions = {
+  // JWT (stateless) strategy. The signed JWT lives in an HTTP-only cookie.
+  // maxAge = 30 days → the session persists across normal browser visits /
+  // restarts, so an admin who logged in once isn't asked to sign in again on
+  // the next visit (within 30 days). After that, the cookie expires and the
+  // user must re-authenticate (requirement: "If the session has expired,
+  // require authentication again").
   session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 }, // 30 days
   pages: { signIn: "/login", newUser: "/register" },
+  // Explicit cookie config — ensures the session cookie is persistent
+  // (maxAge mirrors session.maxAge) and secure-by-default.
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 30 * 24 * 60 * 60, // 30 days — persistent across browser restarts
+      },
+    },
+  },
   providers: [
     CredentialsProvider({
       name: "Credentials",
