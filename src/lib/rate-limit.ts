@@ -26,18 +26,42 @@ const RATE_MAX = 5;
 /**
  * Extract and normalize the client identifier (IP address).
  *
- * Behind Vercel / a reverse proxy, `x-forwarded-for` contains the original
- * client IP as the first value in a comma-separated list. We:
- *   1. Take the first entry (left-most = original client).
- *   2. Trim whitespace.
- *   3. Validate it looks like an IP (IPv4 or IPv6) — reject anything else.
- *   4. Fall back to "unknown" if no valid IP is found.
+ * SECURITY: We do NOT blindly trust the `X-Forwarded-For` header, which
+ * can be set by the client. Instead, we prefer headers set by the hosting
+ * platform's own infrastructure (not user-controllable):
  *
- * We do NOT blindly trust arbitrary forwarded headers. The value is validated
- * as an IP address format. On Vercel, `x-forwarded-for` is set by Vercel's
- * own proxy infrastructure and is trustworthy as the first entry.
+ *   1. `x-vercel-forwarded-for` — set by Vercel's edge network. This is
+ *      the REAL client IP as determined by Vercel, not user-supplied.
+ *   2. `x-real-ip` — set by nginx/other reverse proxies when configured
+ *      to overwrite (not append to) the header.
+ *   3. `x-forwarded-for` — ONLY used as a last resort, and only the
+ *      FIRST value (left-most = original client). This header can be
+ *      spoofed by the client if no upstream proxy overwrites it.
+ *
+ * In all cases, the value is validated as a valid IP address format
+ * (IPv4 or IPv6) before use. Invalid values fall back to "unknown".
+ *
+ * On Vercel (the target staging platform), `x-vercel-forwarded-for` is
+ * set by Vercel's infrastructure and is trustworthy. The regular
+ * `x-forwarded-for` is also set by Vercel but we prefer the Vercel-
+ * specific header for defense-in-depth.
  */
 export function normalizeIdentifier(req: Request): string {
+  // 1. Prefer platform-provided headers (not user-controllable).
+  const platformIp =
+    req.headers.get("x-vercel-forwarded-for") ||
+    req.headers.get("x-real-ip");
+  if (platformIp) {
+    const ip = platformIp.split(",")[0]?.trim();
+    if (ip && isValidIp(ip)) {
+      return ip.toLowerCase();
+    }
+  }
+
+  // 2. Fall back to x-forwarded-for (first value only, validated).
+  //    On Vercel this is also set by the platform (not the client).
+  //    On self-hosted deployments, ensure your reverse proxy overwrites
+  //    (not appends to) this header to prevent spoofing.
   const xff = req.headers.get("x-forwarded-for");
   if (xff) {
     const first = xff.split(",")[0]?.trim();
@@ -45,9 +69,10 @@ export function normalizeIdentifier(req: Request): string {
       return first.toLowerCase();
     }
   }
-  // Fall back to the connection's remote address if available (Node.js).
-  // In serverless (Vercel), this isn't available — x-forwarded-for is the
-  // only source, and Vercel sets it reliably.
+
+  // 3. No valid IP found — use "unknown" as a catch-all bucket.
+  //    This means all requests without a detectable IP share the same
+  //    rate limit, which is safer than allowing unlimited access.
   return "unknown";
 }
 
