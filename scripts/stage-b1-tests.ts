@@ -104,8 +104,12 @@ async function main() {
   // ============================================================
   console.log("\n[3] REFUND — Full + Partial");
   // ============================================================
-  const adminEmail = process.env.STAGING_ADMIN_EMAIL || "admin@angels.dev";
-  const adminPass = process.env.STAGING_ADMIN_PASSWORD || "adminpass123";
+  const adminEmail = process.env.STAGING_ADMIN_EMAIL;
+  const adminPass = process.env.STAGING_ADMIN_PASSWORD;
+  if (!adminEmail || !adminPass) {
+    console.error("Set STAGING_ADMIN_EMAIL and STAGING_ADMIN_PASSWORD to run these tests.");
+    process.exit(1);
+  }
   const adminSession = await signIn(adminEmail, adminPass);
   const adminHdr = { Cookie: adminSession };
 
