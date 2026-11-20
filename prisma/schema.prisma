@@ -26,9 +26,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // ---------------------------------------------------------------------------
@@ -40,8 +39,8 @@ model User {
   passwordHash    String? // null for OAuth-only users
   firstName       String?
   lastName        String?
-  role            UserRole   @default(CUSTOMER)
-  status          UserStatus @default(ACTIVE)
+  role            String     @default("CUSTOMER")
+  status          String     @default("ACTIVE")
   emailVerifiedAt DateTime?
   lastLoginAt     DateTime?
   createdAt       DateTime   @default(now())
@@ -58,18 +57,6 @@ model User {
 
   @@index([role])
   @@index([status])
-}
-
-enum UserRole {
-  CUSTOMER
-  ADMIN
-  SUPER_ADMIN
-}
-
-enum UserStatus {
-  ACTIVE
-  SUSPENDED
-  PENDING
 }
 
 // NextAuth OAuth accounts (enables adding Google etc. later without migration)
@@ -100,7 +87,7 @@ model VerificationToken {
   userId    String?
   email     String
   token     String       @unique
-  purpose   TokenPurpose
+  purpose   String
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime     @default(now())
@@ -109,11 +96,6 @@ model VerificationToken {
 
   @@index([email, purpose])
   @@index([expiresAt])
-}
-
-enum TokenPurpose {
-  EMAIL_VERIFICATION
-  PASSWORD_RESET
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +133,7 @@ model Product {
   images           ProductImage[]
   reviews          Review[]
   wishlistItems    WishlistItem[]
-  status           ProductStatus    @default(DRAFT)
+  status           String           @default("DRAFT")
   isFeatured       Boolean          @default(false)
   isBestSeller     Boolean          @default(false)
   isTrending       Boolean          @default(false)
@@ -159,7 +141,7 @@ model Product {
   // Denormalized for fast filtering/sorting (kept in sync on variant write)
   priceMinCents    Int?
   priceMaxCents    Int?
-  ratingAvg        Decimal?         @db.Decimal(3, 2)
+  ratingAvg        Float?
   ratingCount      Int              @default(0)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -169,12 +151,6 @@ model Product {
   @@index([status, isBestSeller])
   @@index([status, isTrending])
   @@index([status, sortOrder])
-}
-
-enum ProductStatus {
-  DRAFT
-  ACTIVE
-  ARCHIVED
 }
 
 model ProductVariant {
@@ -279,9 +255,9 @@ model Order {
   userId            String? // null = guest checkout
   user              User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
   email             String // guest or account email
-  status            OrderStatus        @default(PENDING)
-  fulfillmentStatus FulfillmentStatus  @default(UNFULFILLED)
-  paymentStatus     PaymentStatus      @default(PENDING)
+  status            String             @default("PENDING")
+  fulfillmentStatus String             @default("UNFULFILLED")
+  paymentStatus     String             @default("PENDING")
   subtotalCents     Int
   discountCents     Int                @default(0)
   shippingCents     Int                @default(0)
@@ -309,28 +285,6 @@ model Order {
   @@index([paymentStatus])
   @@index([createdAt])
   @@index([status, reservationExpiresAt])
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  REFUNDED
-}
-
-enum FulfillmentStatus {
-  UNFULFILLED
-  PARTIAL
-  FULFILLED
-}
-
-enum PaymentStatus {
-  PENDING
-  AUTHORIZED
-  PAID
-  PARTIALLY_PAID
-  REFUNDED
-  FAILED
 }
 
 // OrderItem stores a SNAPSHOT so historical orders stay accurate even when a
@@ -391,7 +345,7 @@ model Shipment {
   trackingNumber     String?
   easypostShipmentId String?
   easypostTrackerId  String?
-  status             ShipmentStatus @default(LABEL_CREATED)
+  status             String         @default("LABEL_CREATED")
   labelUrl           String?
   estimatedDelivery  DateTime?
   shippedAt          DateTime?
@@ -403,25 +357,16 @@ model Shipment {
   @@index([status])
 }
 
-enum ShipmentStatus {
-  LABEL_CREATED
-  IN_TRANSIT
-  OUT_FOR_DELIVERY
-  DELIVERED
-  RETURNED
-  EXCEPTION
-}
-
 model Payment {
   id                String          @id @default(cuid())
   orderId           String
   order             Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  provider          PaymentProvider
+  provider          String
   providerPaymentId String?         @unique // Clover payment id
   idempotencyKey    String          @unique // prevents duplicate charges
   amountCents       Int
   currency          String          @default("USD")
-  status            PaymentStatus
+  status            String
   raw               Json? // sanitized provider response snapshot
   processedAt       DateTime?
   failureReason     String?
@@ -430,10 +375,6 @@ model Payment {
 
   @@index([orderId])
   @@index([status])
-}
-
-enum PaymentProvider {
-  CLOVER
 }
 
 // ---------------------------------------------------------------------------
@@ -450,19 +391,13 @@ model Review {
   rating             Int // 1–5
   title              String?
   body               String
-  status             ReviewStatus @default(PENDING)
+  status             String       @default("PENDING")
   isVerifiedPurchase Boolean      @default(false)
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
   @@index([productId, status])
   @@index([userId])
-}
-
-enum ReviewStatus {
-  PENDING
-  APPROVED
-  REJECTED
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +408,7 @@ model Promotion {
   code         String?       @unique // null = automatic
   name         String
   description  String?
-  type         PromotionType
+  type         String
   value        Int // percent (1–100) or fixed cents
   isActive     Boolean       @default(false) // must be authorized true to display
   authorizedBy String? // admin user id
@@ -481,7 +416,7 @@ model Promotion {
   endsAt       DateTime?
   usageLimit   Int?
   usageCount   Int           @default(0)
-  appliesTo    ApplyScope    @default(ALL)
+  appliesTo    String        @default("ALL")
   scopeJson    Json? // {"categoryIds":[], "productIds":[]}
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -489,18 +424,6 @@ model Promotion {
   redemptions CouponRedemption[]
 
   @@index([isActive, startsAt, endsAt])
-}
-
-enum PromotionType {
-  PERCENTAGE
-  FIXED_AMOUNT
-  FREE_SHIPPING
-}
-
-enum ApplyScope {
-  ALL
-  CATEGORY
-  PRODUCT
 }
 
 model CouponRedemption {
@@ -547,7 +470,7 @@ model AuditLog {
   id         String   @id @default(cuid())
   actorId    String?
   actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  actorRole  UserRole
+  actorRole  String
   action     String // e.g. "product.update_price"
   entityType String
   entityId   String?
@@ -568,20 +491,13 @@ model WebhookEvent {
   externalId  String? // provider event id (idempotency)
   signature   String?
   payload     Json
-  status      WebhookStatus @default(RECEIVED)
+  status      String        @default("RECEIVED")
   error       String?
   receivedAt  DateTime      @default(now())
   processedAt DateTime?
 
   @@unique([provider, externalId])
   @@index([provider, status])
-}
-
-enum WebhookStatus {
-  RECEIVED
-  PROCESSING
-  PROCESSED
-  FAILED
 }
 
 // ---------------------------------------------------------------------------

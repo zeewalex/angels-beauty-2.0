@@ -4,7 +4,11 @@ import { AdminNav } from "@/components/site/admin-nav";
 import { requireRole } from "@/lib/session";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireRole("ADMIN"); // independent server-side auth check
+  // Independent server-side auth check. If not an authorized admin (via
+  // NextAuth session OR trusted-device cookie + DB lookup), this redirects to
+  // /admin-login. The middleware is the edge check; this is the server-side
+  // defense-in-depth check.
+  const session = await requireRole("ADMIN", { redirect: true });
   const name = session?.user.name || "Admin";
 
   return (
