@@ -116,10 +116,13 @@ export function Logo({ variant = "dark", className, enableTapShortcut = false }:
       isDeviceTrusted().then((trusted) => {
         if (trusted) {
           toast.success("Opening admin dashboard…", { duration: 1400, id: "admin-tap" });
-          router.push("/admin");
+          // Use window.location for a full page navigation so the admin
+          // layout's server-side requireRole() runs fresh every time. This
+          // avoids stale content when navigating from the storefront.
+          window.location.href = "/admin";
         } else {
           toast.info("Admin verification required", { duration: 2000, id: "admin-tap" });
-          router.push("/admin-login");
+          window.location.href = "/admin-login";
         }
       });
       return;

@@ -46,8 +46,9 @@ export default function AdminLoginPage() {
         return;
       }
       // Trusted cookie is now set — go straight to admin.
-      router.push("/admin");
-      router.refresh();
+      // Use window.location for a full page load so the server-side
+      // requireRole() runs fresh with the new trusted-device cookie.
+      window.location.href = "/admin";
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);
