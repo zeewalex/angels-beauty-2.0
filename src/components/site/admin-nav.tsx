@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { LayoutDashboard, Package, FolderTree, ShoppingCart, Users, Tag, ScrollText, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, FolderTree, ShoppingCart, Users, Tag, ScrollText, LogOut, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -20,6 +20,7 @@ const items = [
   { href: "/admin/contact-info", label: "Contact Info", icon: Users },
   { href: "/admin/support", label: "Support", icon: Users },
   { href: "/admin/audit", label: "Audit Log", icon: ScrollText },
+  { href: "/admin/devices", label: "Trusted Devices", icon: ShieldCheck },
 ];
 
 export function AdminNav({ adminName }: { adminName: string }) {

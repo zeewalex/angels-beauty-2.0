@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { authOptions, type AppSession } from "@/lib/auth";
 import {
   verifyTrustedToken,
+  hashToken,
   TRUSTED_COOKIE_NAME,
 } from "@/lib/trusted-device";
 
@@ -12,10 +13,17 @@ import {
  * Get the current session (or null) on the server.
  *
  * Tries NextAuth first. If no NextAuth session, checks for a trusted-device
- * cookie. If the trusted cookie is valid, looks up the admin user from the DB
- * and returns a synthetic session. This lets a trusted device access /admin
- * pages without a separate NextAuth login, while still enforcing that the
- * underlying user exists, is ACTIVE, and has an admin role.
+ * cookie and does a FULL DB-backed revocation check:
+ *   1. Verify the token's HMAC (tamper check).
+ *   2. Check expiry.
+ *   3. Look up the token hash in the TrustedDevice table.
+ *   4. If the record doesn't exist → denied (token was revoked / DB reset).
+ *   5. If revokedAt is set → denied (admin revoked the device).
+ *   6. If the user doesn't exist, isn't ACTIVE, or isn't an admin → denied.
+ *
+ * This means revocation is IMMEDIATE: setting revokedAt = now() on the
+ * TrustedDevice row denies all further access on the very next request,
+ * even if the cookie hasn't expired.
  */
 export async function getSession(): Promise<AppSession | null> {
   // 1. NextAuth session (standard login).
@@ -25,12 +33,24 @@ export async function getSession(): Promise<AppSession | null> {
   // 2. Trusted-device cookie (five-tap shortcut).
   const cookieStore = await cookies();
   const token = cookieStore.get(TRUSTED_COOKIE_NAME)?.value;
-  const trusted = await verifyTrustedToken(token);
-  if (!trusted) return null;
+
+  // Fast HMAC + expiry check (Edge-compatible logic, no DB yet).
+  const payload = await verifyTrustedToken(token);
+  if (!payload) return null;
+  if (payload.role !== "ADMIN" && payload.role !== "SUPER_ADMIN") return null;
+
+  // Full DB-backed check: revocation, user existence, role, status.
+  const tokenHash = await hashToken(token!);
+  const record = await db.trustedDevice.findUnique({
+    where: { tokenHash },
+    select: { id: true, revokedAt: true, expiresAt: true, userId: true },
+  });
+  if (!record) return null; // token not in DB — revoked or never issued
+  if (record.revokedAt) return null; // explicitly revoked
 
   // Verify the admin user still exists and is active + admin.
   const user = await db.user.findUnique({
-    where: { id: trusted.userId },
+    where: { id: payload.userId },
     select: {
       id: true,
       email: true,
@@ -41,7 +61,12 @@ export async function getSession(): Promise<AppSession | null> {
     },
   });
   if (!user || user.status !== "ACTIVE") return null;
-  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") return null;
+  if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") return null; // demoted
+
+  // Update lastUsedAt (fire-and-forget, don't block the request).
+  db.trustedDevice
+    .update({ where: { id: record.id }, data: { lastUsedAt: new Date() } })
+    .catch(() => {});
 
   return {
     user: {
@@ -56,13 +81,9 @@ export async function getSession(): Promise<AppSession | null> {
 /**
  * Require an authenticated session. In Route Handlers, pass `redirect: false`
  * to get `null` instead of a redirect (so you can return 401 JSON).
- *
- * For admin pages, redirects to /admin-login (the PIN-gated enrollment page)
- * instead of the public /login page — so admin access never exposes the
- * public login form.
  */
 export async function requireSession(
-  opts: { redirect?: boolean; admin?: boolean } = {},
+  opts: { redirect?: boolean } = {},
 ): Promise<AppSession | null> {
   const session = await getSession();
   if (!session) {
@@ -79,10 +100,10 @@ export async function requireSession(
  * return 401 JSON). Pass `{ redirect: true }` for Server Components that
  * should redirect to /admin-login on failure.
  *
- * IMPORTANT: This checks the real session (NextAuth OR trusted-device + DB
- * lookup). The trusted cookie alone does NOT bypass this — the user must
- * still exist in the DB with an active admin role. If the user is deleted or
- * demoted after the cookie was issued, this check fails and access is denied.
+ * This checks the real session (NextAuth OR trusted-device + DB revocation +
+ * user lookup). The trusted cookie alone does NOT bypass this — the user must
+ * still exist in the DB with an active admin role, and the device must not be
+ * revoked.
  */
 export async function requireRole(
   role: "ADMIN" | "SUPER_ADMIN",

@@ -1,38 +1,32 @@
 /**
- * Trusted-Device token for the admin five-tap shortcut.
+ * Trusted-Device token for the admin five-tap shortcut — with DB-backed
+ * revocation.
  *
- * Purpose:
- *   The client wants the five-tap logo shortcut to be the ONLY visible way to
- *   access the admin dashboard — no routine email/password prompt on each
- *   visit. To achieve this safely (without weakening server-side auth), we
- *   issue a long-lived "trusted device" cookie AFTER the client authenticates
- *   once with credentials + PIN on their private device. On subsequent visits,
- *   the five-tap shortcut reads this cookie (via the server) and grants
- *   immediate admin access. If the cookie is absent/expired, the five-tap
- *   routes to the PIN-gated /admin-login page for secure re-authentication.
+ * Design:
+ *   1. On enrollment (POST /api/admin/trust), after verifying credentials +
+ *      PIN, we create a token: <deviceId>.<userId>.<role>.<expiresAt>.<hmac>
+ *   2. We store a SHA-256 HASH of the token in the TrustedDevice table (never
+ *      the plaintext token).
+ *   3. On every protected request (middleware + getSession), we:
+ *      a. Verify the HMAC (tamper check).
+ *      b. Check expiry.
+ *      c. Look up the token hash in the DB. If the record doesn't exist, or
+ *         revokedAt is set, or the user has been deleted/demoted, access is
+ *         DENIED — even if the cookie hasn't expired.
+ *   4. Revocation = set revokedAt = now() on the TrustedDevice row. Immediate.
  *
- * Security properties:
- *   - Signed with HMAC-SHA256 (ADMIN_TRUST_SECRET) — tamper-proof.
- *   - Bound to a specific admin user id + role — cannot be reused by another
- *     account even if the cookie is copied to a different browser.
- *   - Expires after TRUSTED_DEVICE_MAX_AGE (90 days) — requires periodic
- *     re-authentication per requirement #6.
- *   - httpOnly + sameSite=lax + secure(in prod) — not readable by JS, not
- *     leaked on cross-site requests, only sent over HTTPS in production.
- *   - The trusted cookie ALONE does not grant admin API access — every admin
- *     Route Handler calls requireRole("ADMIN") which reads the real session.
- *     The admin layout (Server Component) also calls requireRole("ADMIN").
- *     The trusted cookie only satisfies the *middleware* + getSession() so the
- *     page can render; the server-side role check is independent and enforced.
+ * Token format: <deviceId>.<userId>.<role>.<expiresAt>.<hmac>
  *
- * Token format: <userId>.<role>.<expiresAt>.<hmac>
- *
- * Implementation note: uses the Web Crypto API (crypto.subtle) so it works in
- * the Edge Runtime (middleware) as well as the Node.js runtime (API routes,
- * Server Components). node:crypto is NOT available in the Edge Runtime.
+ * NOTE: The HMAC signing uses the Web Crypto API (crypto.subtle) so this module
+ * works in the Edge Runtime (middleware). The DB lookup happens in the
+ * Node.js runtime (getSession / route handlers / requireRole). The middleware
+ * only does the HMAC + expiry check (no DB); the server-side getSession does
+ * the full DB-backed revocation check. This is defense-in-depth: even if a
+ * revoked cookie passes the middleware, getSession() will reject it.
  */
 
-const SECRET = process.env.ADMIN_TRUST_SECRET || process.env.NEXTAUTH_SECRET || "dev-trust-fallback";
+const SECRET =
+  process.env.ADMIN_TRUST_SECRET || process.env.NEXTAUTH_SECRET || "dev-trust-fallback";
 const TRUSTED_COOKIE = "ab_trusted_admin";
 // 90 days — long-lived convenience on a trusted device, but expires eventually
 // per requirement #6 ("If the session expires… require secure reauthentication").
@@ -49,7 +43,7 @@ function bufToHex(buf: ArrayBuffer): string {
   return hex;
 }
 
-/** Compute the HMAC-SHA256 of `payload` using the secret, returned as hex. */
+/** Compute HMAC-SHA256 of `payload` using the secret, returned as hex. */
 async function hmacSign(payload: string): Promise<string> {
   const keyData = encoder.encode(SECRET);
   const cryptoKey = await crypto.subtle.importKey(
@@ -63,6 +57,16 @@ async function hmacSign(payload: string): Promise<string> {
   return bufToHex(sig);
 }
 
+/**
+ * SHA-256 hash of the full token string, for DB storage/lookup.
+ * Uses Web Crypto (async) so it works in both Edge and Node.js runtimes.
+ */
+export async function hashToken(token: string): Promise<string> {
+  const data = encoder.encode(token);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return bufToHex(hash);
+}
+
 /** Constant-time string comparison to prevent timing attacks. */
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -73,26 +77,50 @@ function constantTimeEqual(a: string, b: string): boolean {
   return result === 0;
 }
 
-/** Build a trusted-device token for a given admin user. */
-export async function createTrustedToken(userId: string, role: string): Promise<string> {
-  const expiresAt = Math.floor(Date.now() / 1000) + TRUSTED_DEVICE_MAX_AGE;
-  const payload = `${userId}.${role}.${expiresAt}`;
-  const hmac = await hmacSign(payload);
-  return `${payload}.${hmac}`;
+export interface TrustedTokenPayload {
+  deviceId: string;
+  userId: string;
+  role: string;
+  expiresAt: number; // unix seconds
 }
 
 /**
- * Verify a trusted-device token. Returns the user id + role if valid and
- * unexpired, or null if the token is missing, tampered, or expired.
+ * Create a trusted-device token. Returns the token string AND the hash for DB
+ * storage. The caller MUST store the hash in the TrustedDevice table.
+ */
+export async function createTrustedToken(
+  userId: string,
+  role: string,
+): Promise<{ token: string; tokenHash: string; expiresAt: Date; deviceId: string }> {
+  const deviceId = crypto.randomUUID();
+  const expiresAtSec = Math.floor(Date.now() / 1000) + TRUSTED_DEVICE_MAX_AGE;
+  const payload = `${deviceId}.${userId}.${role}.${expiresAtSec}`;
+  const hmac = await hmacSign(payload);
+  const token = `${payload}.${hmac}`;
+  return {
+    token,
+    tokenHash: hashToken(token),
+    expiresAt: new Date(expiresAtSec * 1000),
+    deviceId,
+  };
+}
+
+/**
+ * Verify a trusted-device token's HMAC + expiry (Edge-safe, no DB).
+ * Returns the parsed payload if valid, or null.
+ *
+ * This is used by the middleware (Edge Runtime) for the fast edge check.
+ * The full DB-backed revocation check happens in verifyTrustedTokenFull()
+ * (Node.js runtime) via getSession().
  */
 export async function verifyTrustedToken(
   token: string | undefined | null,
-): Promise<{ userId: string; role: string } | null> {
+): Promise<TrustedTokenPayload | null> {
   if (!token) return null;
   const parts = token.split(".");
-  if (parts.length !== 4) return null;
-  const [userId, role, expiresAtStr, hmac] = parts;
-  const payload = `${userId}.${role}.${expiresAtStr}`;
+  if (parts.length !== 5) return null;
+  const [deviceId, userId, role, expiresAtStr, hmac] = parts;
+  const payload = `${deviceId}.${userId}.${role}.${expiresAtStr}`;
 
   // Recompute the HMAC and compare in constant time.
   const expected = await hmacSign(payload);
@@ -102,7 +130,7 @@ export async function verifyTrustedToken(
   const expiresAt = parseInt(expiresAtStr, 10);
   if (Number.isNaN(expiresAt) || expiresAt < Math.floor(Date.now() / 1000)) return null;
 
-  return { userId, role };
+  return { deviceId, userId, role, expiresAt };
 }
 
 /** Cookie name used for the trusted-device token. */
@@ -116,3 +144,18 @@ export const TRUSTED_COOKIE_OPTIONS = {
   secure: process.env.NODE_ENV === "production",
   maxAge: TRUSTED_DEVICE_MAX_AGE,
 };
+
+/**
+ * Validate that required admin secrets are set at startup.
+ * Call this from the server entry to fail fast if secrets are missing.
+ */
+export function validateAdminSecrets(): { ok: boolean; missing: string[] } {
+  const missing: string[] = [];
+  if (!process.env.ADMIN_PIN || process.env.ADMIN_PIN.length < 4) {
+    missing.push("ADMIN_PIN (must be ≥ 4 characters)");
+  }
+  if (!process.env.ADMIN_TRUST_SECRET || process.env.ADMIN_TRUST_SECRET.length < 32) {
+    missing.push("ADMIN_TRUST_SECRET (must be ≥ 32 characters)");
+  }
+  return { ok: missing.length === 0, missing };
+}

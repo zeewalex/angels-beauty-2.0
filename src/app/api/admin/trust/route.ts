@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth";
 import {
   createTrustedToken,
+  hashToken,
   TRUSTED_COOKIE_NAME,
   TRUSTED_COOKIE_OPTIONS,
+  validateAdminSecrets,
 } from "@/lib/trusted-device";
 
 /**
@@ -17,18 +19,15 @@ import {
  * This is the ONLY endpoint that issues a trusted-device cookie. It requires
  * ALL THREE:
  *   1. Valid admin email + password (credentials check against the DB).
- *   2. Correct ADMIN_PIN (out-of-band secret shared with the client).
+ *   2. Correct ADMIN_PIN (out-of-band secret from env).
  *
- * After verifying, it sets a long-lived signed trusted-device cookie and
- * returns { ok: true }. The five-tap shortcut then reads this cookie (via
- * the session check in middleware) to grant immediate admin access.
+ * After verifying, it:
+ *   - Creates a TrustedDevice record in the DB (token hash + metadata).
+ *   - Sets a long-lived signed trusted-device cookie.
+ *   - Returns { ok: true, deviceId }.
  *
- * Security:
- *   - Credentials are verified server-side via bcrypt (never returned).
- *   - The PIN is checked against ADMIN_PIN env var (not stored in the DB).
- *   - Rate-limited per IP to prevent brute-force (in-memory; resets on
- *     serverless cold start, but the DB bcrypt check is the primary defence).
- *   - The trusted cookie is HMAC-signed and bound to the admin user id + role.
+ * The five-tap shortcut then reads this cookie (via the server) to grant
+ * immediate admin access. Revocation = set revokedAt on the TrustedDevice row.
  */
 
 // In-memory rate limiter (per IP). Resets every 15 minutes. Max 5 attempts.
@@ -54,6 +53,15 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  // Validate secrets are configured.
+  const secrets = validateAdminSecrets();
+  if (!secrets.ok) {
+    return NextResponse.json(
+      { error: "Trusted-device enrollment is not properly configured." },
+      { status: 503 },
+    );
+  }
+
   // Rate limit.
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   if (rateLimited(ip)) {
@@ -76,15 +84,9 @@ export async function POST(req: Request) {
   }
   const { email, password, pin } = parsed.data;
 
-  // Verify PIN (out-of-band secret).
-  const expectedPin = process.env.ADMIN_PIN;
-  if (!expectedPin) {
-    return NextResponse.json(
-      { error: "Trusted-device enrollment is not configured. Set ADMIN_PIN." },
-      { status: 503 },
-    );
-  }
-  if (pin !== expectedPin) {
+  // Verify PIN (out-of-band secret). Use constant-time comparison.
+  const expectedPin = process.env.ADMIN_PIN!;
+  if (pin.length !== expectedPin.length || !timingSafeEqualStr(pin, expectedPin)) {
     return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
   }
 
@@ -114,12 +116,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "This account does not have admin access." }, { status: 403 });
   }
 
-  // Issue the trusted-device cookie.
-  const token = await createTrustedToken(user.id, user.role);
+  // Create the trusted-device token + DB record.
+  const { token, tokenHash, expiresAt, deviceId } = await createTrustedToken(user.id, user.role);
+  const headerStore = await headers();
+  const userAgent = headerStore.get("user-agent") || null;
+
+  await db.trustedDevice.create({
+    data: {
+      id: deviceId,
+      userId: user.id,
+      tokenHash: await hashToken(token),
+      userAgent,
+      ipAddress: ip,
+      expiresAt,
+    },
+  });
+
+  // Set the cookie.
   const cookieStore = await cookies();
   cookieStore.set(TRUSTED_COOKIE_NAME, token, TRUSTED_COOKIE_OPTIONS);
 
-  // Also update lastLoginAt (audit trail).
+  // Update lastLoginAt (audit trail).
   await db.user.update({
     where: { id: user.id },
     data: { lastLoginAt: new Date() },
@@ -127,6 +144,16 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: true,
+    deviceId,
     user: { email: user.email, name: [user.firstName, user.lastName].filter(Boolean).join(" ") },
   });
+}
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
 }

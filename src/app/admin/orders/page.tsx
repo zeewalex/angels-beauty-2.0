@@ -7,8 +7,17 @@ export default async function AdminOrdersPage() {
   const orders = await db.order.findMany({
     orderBy: { createdAt: "desc" },
     take: 100,
-    include: { items: { select: { name: true, quantity: true } } },
-    select: { id: true, orderNumber: true, email: true, status: true, paymentStatus: true, fulfillmentStatus: true, totalCents: true, createdAt: true, items: true },
+    select: {
+      id: true,
+      orderNumber: true,
+      email: true,
+      status: true,
+      paymentStatus: true,
+      fulfillmentStatus: true,
+      totalCents: true,
+      createdAt: true,
+      items: { select: { name: true, quantity: true } },
+    },
   });
 
   return (
