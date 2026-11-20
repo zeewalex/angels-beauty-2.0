@@ -10,6 +10,7 @@ import {
   TRUSTED_COOKIE_OPTIONS,
   validateAdminSecrets,
 } from "@/lib/trusted-device";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * POST /api/admin/trust — one-time trusted-device enrollment.
@@ -28,23 +29,11 @@ import {
  *
  * The five-tap shortcut then reads this cookie (via the server) to grant
  * immediate admin access. Revocation = set revokedAt on the TrustedDevice row.
+ *
+ * Rate limiting: DB-backed (persistent across instances). 5 attempts per
+ * 15 minutes per IP. For production with Redis, swap the implementation in
+ * src/lib/rate-limit.ts — the interface stays the same.
  */
-
-// In-memory rate limiter (per IP). Resets every 15 minutes. Max 5 attempts.
-const RATE_WINDOW_MS = 15 * 60 * 1000;
-const RATE_MAX = 5;
-const attempts = new Map<string, { count: number; firstAt: number }>();
-
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const entry = attempts.get(ip);
-  if (!entry || now - entry.firstAt > RATE_WINDOW_MS) {
-    attempts.set(ip, { count: 1, firstAt: now });
-    return false;
-  }
-  entry.count++;
-  return entry.count > RATE_MAX;
-}
 
 const bodySchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -62,12 +51,16 @@ export async function POST(req: Request) {
     );
   }
 
-  // Rate limit.
+  // Rate limit (DB-backed — persistent across server instances).
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (rateLimited(ip)) {
+  const rate = await checkRateLimit(ip);
+  if (!rate.allowed) {
     return NextResponse.json(
-      { error: "Too many attempts. Please try again in 15 minutes." },
-      { status: 429 },
+      { error: "Too many attempts. Please try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(Math.ceil(rate.retryAfterMs / 1000)) },
+      },
     );
   }
 

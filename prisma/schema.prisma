@@ -103,6 +103,18 @@ model TrustedDevice {
   @@index([expiresAt])
 }
 
+// Persistent rate-limit buckets for trusted-device enrollment.
+// DB-backed so all server instances share the same rate-limit state.
+model RateLimitBucket {
+  id         String   @id @default(cuid())
+  identifier String   // IP address or other identifier
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime  // when this attempt falls out of the window
+
+  @@index([identifier, createdAt])
+  @@index([expiresAt])
+}
+
 // Email verification + password reset tokens
 model VerificationToken {
   id        String        @id @default(cuid())

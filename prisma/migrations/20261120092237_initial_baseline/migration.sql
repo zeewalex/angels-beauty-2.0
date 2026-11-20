@@ -2,7 +2,7 @@
 CREATE TYPE "UserRole" AS ENUM ('CUSTOMER', 'ADMIN', 'SUPER_ADMIN');
 
 -- CreateEnum
-CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'SUSPENDED', 'PENDING');
+CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'SUSPENDED');
 
 -- CreateEnum
 CREATE TYPE "TokenPurpose" AS ENUM ('EMAIL_VERIFICATION', 'PASSWORD_RESET');
@@ -11,19 +11,19 @@ CREATE TYPE "TokenPurpose" AS ENUM ('EMAIL_VERIFICATION', 'PASSWORD_RESET');
 CREATE TYPE "ProductStatus" AS ENUM ('DRAFT', 'ACTIVE', 'ARCHIVED');
 
 -- CreateEnum
-CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'CONFIRMED', 'CANCELLED', 'REFUNDED');
+CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED', 'ON_HOLD');
 
 -- CreateEnum
-CREATE TYPE "FulfillmentStatus" AS ENUM ('UNFULFILLED', 'PARTIAL', 'FULFILLED');
+CREATE TYPE "FulfillmentStatus" AS ENUM ('UNFULFILLED', 'PROCESSING', 'SHIPPED', 'DELIVERED');
 
 -- CreateEnum
-CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'AUTHORIZED', 'PAID', 'PARTIALLY_PAID', 'REFUNDED', 'FAILED');
+CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED');
 
 -- CreateEnum
-CREATE TYPE "ShipmentStatus" AS ENUM ('LABEL_CREATED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED', 'RETURNED', 'EXCEPTION');
+CREATE TYPE "ShipmentStatus" AS ENUM ('LABEL_CREATED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED', 'RETURNED');
 
 -- CreateEnum
-CREATE TYPE "PaymentProvider" AS ENUM ('CLOVER');
+CREATE TYPE "PaymentProvider" AS ENUM ('STRIPE', 'PAYPAL', 'MANUAL');
 
 -- CreateEnum
 CREATE TYPE "ReviewStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
@@ -32,10 +32,10 @@ CREATE TYPE "ReviewStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 CREATE TYPE "PromotionType" AS ENUM ('PERCENTAGE', 'FIXED_AMOUNT', 'FREE_SHIPPING');
 
 -- CreateEnum
-CREATE TYPE "ApplyScope" AS ENUM ('ALL', 'CATEGORY', 'PRODUCT');
+CREATE TYPE "ApplyScope" AS ENUM ('ORDER', 'CATEGORY', 'PRODUCT');
 
 -- CreateEnum
-CREATE TYPE "WebhookStatus" AS ENUM ('RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED');
+CREATE TYPE "WebhookStatus" AS ENUM ('RECEIVED', 'VERIFIED', 'PROCESSED', 'FAILED');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -71,6 +71,21 @@ CREATE TABLE "Account" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Account_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "TrustedDevice" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "tokenHash" TEXT NOT NULL,
+    "userAgent" TEXT,
+    "ipAddress" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "revokedAt" TIMESTAMP(3),
+    "lastUsedAt" TIMESTAMP(3),
+
+    CONSTRAINT "TrustedDevice_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -228,6 +243,7 @@ CREATE TABLE "Order" (
     "customerNote" TEXT,
     "placedAt" TIMESTAMP(3),
     "cancelledAt" TIMESTAMP(3),
+    "reservationExpiresAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -342,7 +358,7 @@ CREATE TABLE "Promotion" (
     "endsAt" TIMESTAMP(3),
     "usageLimit" INTEGER,
     "usageCount" INTEGER NOT NULL DEFAULT 0,
-    "appliesTo" "ApplyScope" NOT NULL DEFAULT 'ALL',
+    "appliesTo" "ApplyScope" NOT NULL DEFAULT 'ORDER',
     "scopeJson" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -392,7 +408,7 @@ CREATE TABLE "StoreSetting" (
 CREATE TABLE "AuditLog" (
     "id" TEXT NOT NULL,
     "actorId" TEXT,
-    "actorRole" "UserRole" NOT NULL,
+    "actorRole" TEXT NOT NULL,
     "action" TEXT NOT NULL,
     "entityType" TEXT NOT NULL,
     "entityId" TEXT,
@@ -420,6 +436,90 @@ CREATE TABLE "WebhookEvent" (
     CONSTRAINT "WebhookEvent_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "HeroSlide" (
+    "id" TEXT NOT NULL,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "mediaType" TEXT NOT NULL DEFAULT 'image',
+    "desktopMedia" TEXT NOT NULL,
+    "mobileMedia" TEXT,
+    "posterImage" TEXT,
+    "headline" TEXT,
+    "subtitle" TEXT,
+    "ctaText" TEXT,
+    "ctaUrl" TEXT,
+    "overlay" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "startsAt" TIMESTAMP(3),
+    "endsAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "HeroSlide_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "BlogPost" (
+    "id" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "excerpt" TEXT,
+    "body" TEXT NOT NULL,
+    "featuredImage" TEXT,
+    "category" TEXT NOT NULL DEFAULT 'General',
+    "status" TEXT NOT NULL DEFAULT 'DRAFT',
+    "publishedAt" TIMESTAMP(3),
+    "seoTitle" TEXT,
+    "seoDescription" TEXT,
+    "ogImage" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "BlogPost_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "FAQ" (
+    "id" TEXT NOT NULL,
+    "category" TEXT NOT NULL DEFAULT 'General',
+    "question" TEXT NOT NULL,
+    "answer" TEXT NOT NULL,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "FAQ_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SupportTicket" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "subject" TEXT NOT NULL,
+    "message" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'OPEN',
+    "adminReply" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SupportTicket_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ContactMessage" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "subject" TEXT NOT NULL,
+    "message" TEXT NOT NULL,
+    "isRead" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ContactMessage_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -434,6 +534,15 @@ CREATE INDEX "Account_userId_idx" ON "Account"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Account_provider_providerAccountId_key" ON "Account"("provider", "providerAccountId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TrustedDevice_tokenHash_key" ON "TrustedDevice"("tokenHash");
+
+-- CreateIndex
+CREATE INDEX "TrustedDevice_userId_idx" ON "TrustedDevice"("userId");
+
+-- CreateIndex
+CREATE INDEX "TrustedDevice_expiresAt_idx" ON "TrustedDevice"("expiresAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "VerificationToken_token_key" ON "VerificationToken"("token");
@@ -517,6 +626,9 @@ CREATE INDEX "Order_paymentStatus_idx" ON "Order"("paymentStatus");
 CREATE INDEX "Order_createdAt_idx" ON "Order"("createdAt");
 
 -- CreateIndex
+CREATE INDEX "Order_status_reservationExpiresAt_idx" ON "Order"("status", "reservationExpiresAt");
+
+-- CreateIndex
 CREATE INDEX "OrderItem_orderId_idx" ON "OrderItem"("orderId");
 
 -- CreateIndex
@@ -582,8 +694,41 @@ CREATE INDEX "WebhookEvent_provider_status_idx" ON "WebhookEvent"("provider", "s
 -- CreateIndex
 CREATE UNIQUE INDEX "WebhookEvent_provider_externalId_key" ON "WebhookEvent"("provider", "externalId");
 
+-- CreateIndex
+CREATE INDEX "HeroSlide_isActive_sortOrder_idx" ON "HeroSlide"("isActive", "sortOrder");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "BlogPost_slug_key" ON "BlogPost"("slug");
+
+-- CreateIndex
+CREATE INDEX "BlogPost_status_publishedAt_idx" ON "BlogPost"("status", "publishedAt");
+
+-- CreateIndex
+CREATE INDEX "BlogPost_category_idx" ON "BlogPost"("category");
+
+-- CreateIndex
+CREATE INDEX "FAQ_isActive_sortOrder_idx" ON "FAQ"("isActive", "sortOrder");
+
+-- CreateIndex
+CREATE INDEX "FAQ_category_idx" ON "FAQ"("category");
+
+-- CreateIndex
+CREATE INDEX "SupportTicket_status_idx" ON "SupportTicket"("status");
+
+-- CreateIndex
+CREATE INDEX "SupportTicket_createdAt_idx" ON "SupportTicket"("createdAt");
+
+-- CreateIndex
+CREATE INDEX "ContactMessage_isRead_idx" ON "ContactMessage"("isRead");
+
+-- CreateIndex
+CREATE INDEX "ContactMessage_createdAt_idx" ON "ContactMessage"("createdAt");
+
 -- AddForeignKey
 ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TrustedDevice" ADD CONSTRAINT "TrustedDevice_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "VerificationToken" ADD CONSTRAINT "VerificationToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
