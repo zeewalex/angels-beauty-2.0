@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Mail, Lock, ShieldCheck, KeyRound, ArrowRight } from "lucide-react";
+import { Mail, ShieldCheck, KeyRound, ArrowRight } from "lucide-react";
 import { AuthShell } from "@/components/site/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,9 +13,14 @@ import { useRouter } from "next/navigation";
  *
  * This page is NOT linked from the storefront. It is reached only via the
  * five-tap logo shortcut when the device is not yet trusted (or the trust
- * has expired). It verifies:
- *   1. Admin email + password (credentials)
- *   2. Admin PIN (out-of-band secret)
+ * has expired).
+ *
+ * The client does not want a password prompt. Enrollment requires only:
+ *   1. Admin email (to identify the account)
+ *   2. Admin PIN (the out-of-band secret shared with the client)
+ *
+ * No password field is shown. The PIN is the sole secret protecting
+ * enrollment, backed by rate limiting (5 attempts / 15 min per IP).
  *
  * On success, a long-lived trusted-device cookie is set, and subsequent
  * five-tap shortcuts go straight to /admin with no prompt.
@@ -25,7 +30,7 @@ import { useRouter } from "next/navigation";
  */
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ email: "", password: "", pin: "" });
+  const [form, setForm] = useState({ email: "", pin: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,22 +95,6 @@ export default function AdminLoginPage() {
           </div>
         </div>
         <div>
-          <Label htmlFor="password">Password</Label>
-          <div className="relative mt-1">
-            <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="password"
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              className="pl-9"
-              placeholder="••••••••"
-              autoComplete="current-password"
-              required
-            />
-          </div>
-        </div>
-        <div>
           <Label htmlFor="pin">Security PIN</Label>
           <div className="relative mt-1">
             <KeyRound size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -122,7 +111,7 @@ export default function AdminLoginPage() {
             />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            The PIN was shared with you separately from your password.
+            The PIN was shared with you separately.
           </p>
         </div>
 
@@ -133,8 +122,8 @@ export default function AdminLoginPage() {
 
       <div className="mt-5 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
         <p>
-          After verification, this device is trusted for 90 days. You can clear
-          trusted devices from the admin dashboard under <strong>Settings</strong>.
+          After verification, this device is trusted for 90 days. You can revoke
+          trusted devices from the admin dashboard under <strong>Trusted Devices</strong>.
         </p>
       </div>
     </AuthShell>

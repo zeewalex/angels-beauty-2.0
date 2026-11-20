@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { cookies, headers } from "next/headers";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { verifyPassword } from "@/lib/auth";
 import {
   createTrustedToken,
   hashToken,
@@ -15,29 +14,30 @@ import { checkRateLimit, normalizeIdentifier } from "@/lib/rate-limit";
 /**
  * POST /api/admin/trust — one-time trusted-device enrollment.
  *
- * Body: { email, password, pin }
+ * Body: { email, pin }
  *
- * This is the ONLY endpoint that issues a trusted-device cookie. It requires
- * ALL THREE:
- *   1. Valid admin email + password (credentials check against the DB).
- *   2. Correct ADMIN_PIN (out-of-band secret from env).
+ * The client does not want a password prompt. Enrollment requires only:
+ *   1. Admin email (identifies the account — must exist in the DB as an
+ *      active admin).
+ *   2. Correct ADMIN_PIN (out-of-band secret from env, compared in
+ *      constant time).
+ *
+ * No password is requested or verified. The PIN is the sole secret
+ * protecting enrollment, backed by:
+ *   - Rate limiting (5 attempts / 15 min per IP, DB-backed + advisory lock)
+ *   - The PIN is never in source code, browser JS, or logs
+ *   - The email must match an existing ACTIVE admin user
  *
  * After verifying, it:
  *   - Creates a TrustedDevice record in the DB (token hash + metadata).
  *   - Sets a long-lived signed trusted-device cookie.
  *   - Returns { ok: true, deviceId }.
  *
- * The five-tap shortcut then reads this cookie (via the server) to grant
- * immediate admin access. Revocation = set revokedAt on the TrustedDevice row.
- *
- * Rate limiting: DB-backed (persistent across instances). 5 attempts per
- * 15 minutes per IP. For production with Redis, swap the implementation in
- * src/lib/rate-limit.ts — the interface stays the same.
+ * Revocation = set revokedAt on the TrustedDevice row. Immediate.
  */
 
 const bodySchema = z.object({
   email: z.string().email().toLowerCase(),
-  password: z.string().min(1),
   pin: z.string().min(4).max(8),
 });
 
@@ -52,13 +52,9 @@ export async function POST(req: Request) {
   }
 
   // Rate limit (DB-backed — persistent, atomic, race-safe across instances).
-  // IP is extracted safely via normalizeIdentifier (validated, not blindly
-  // trusted from arbitrary forwarded headers).
   const ip = normalizeIdentifier(req);
   const rate = await checkRateLimit(ip);
   if (!rate.allowed) {
-    // Error message is generic — never reveals whether the email exists,
-    // whether the PIN was wrong, or any account information.
     return NextResponse.json(
       { error: "Too many attempts. Please try again later." },
       {
@@ -79,15 +75,16 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
-  const { email, password, pin } = parsed.data;
+  const { email, pin } = parsed.data;
 
-  // Verify PIN (out-of-band secret). Use constant-time comparison.
+  // Verify PIN (out-of-band secret). Constant-time comparison.
   const expectedPin = process.env.ADMIN_PIN!;
   if (pin.length !== expectedPin.length || !timingSafeEqualStr(pin, expectedPin)) {
     return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
   }
 
-  // Verify email + password against the DB.
+  // Verify the email belongs to an active admin user.
+  // No password check — the PIN is the sole secret.
   const user = await db.user.findUnique({
     where: { email },
     select: {
@@ -97,14 +94,9 @@ export async function POST(req: Request) {
       lastName: true,
       role: true,
       status: true,
-      passwordHash: true,
     },
   });
-  if (!user || !user.passwordHash || user.status !== "ACTIVE") {
-    return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
-  }
-  const pwOk = await verifyPassword(password, user.passwordHash);
-  if (!pwOk) {
+  if (!user || user.status !== "ACTIVE") {
     return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
   }
 
