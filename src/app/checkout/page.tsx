@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowRight, Loader2, ShoppingBag } from "lucide-react";
 import { StorefrontShell } from "@/components/site/storefront-shell";
 import { Breadcrumbs } from "@/components/site/breadcrumbs";
+import { PaymentMethods } from "@/components/site/payment-methods";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -185,9 +186,9 @@ export default function CheckoutPage() {
             <Button type="submit" disabled={loading} className="mt-5 w-full gap-2 bg-forest hover:bg-forest-light">
               {loading ? <><Loader2 size={16} className="animate-spin" /> Placing order…</> : <>Place Order <ArrowRight size={16} /></>}
             </Button>
-            <p className="mt-3 text-center text-[11px] text-muted-foreground">
-              No payment is processed yet (Phase 3). Your order is created as pending.
-            </p>
+            <div className="mt-4">
+              <PaymentMethods variant="checkout" />
+            </div>
           </aside>
         </form>
       </div>

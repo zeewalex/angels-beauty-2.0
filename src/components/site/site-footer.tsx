@@ -2,6 +2,7 @@
 
 import { Facebook, Instagram, Youtube, ArrowRight, Heart } from "lucide-react";
 import { Logo } from "./logo";
+import { PaymentMethods } from "./payment-methods";
 
 // Pinterest isn't in lucide; use a simple inline svg.
 function PinterestIcon({ size = 16 }: { size?: number }) {
@@ -127,6 +128,7 @@ export function SiteFooter() {
                 <Heart size={14} className="ml-1 inline fill-blush" />
               </p>
             </div>
+            <PaymentMethods variant="footer" />
           </div>
         </div>
 
