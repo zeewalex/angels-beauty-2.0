@@ -59,3 +59,18 @@ server.log
 # Local dev db
 *.db
 db/backups/
+
+# Database dumps and local databases
+db/
+*.db
+*.db-journal
+*.sql.gz
+*.sqlite
+
+# Download / backup archives
+download/*.tar.gz
+download/*.bundle
+download/*.png
+
+# Reports (generated docs, not source code)
+download/
