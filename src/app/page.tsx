@@ -28,18 +28,25 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  // Load active hero slides (scheduled + active). Falls back to static hero if none.
+  // Load active hero slides (scheduled + active). Falls back to static hero
+  // if none OR if the database is unavailable (e.g. Vercel Preview without DB).
   const now = new Date();
-  const heroSlides = await db.heroSlide.findMany({
-    where: {
-      isActive: true,
-      AND: [
-        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-        { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-      ],
-    },
-    orderBy: { sortOrder: "asc" },
-  });
+  let heroSlides: Awaited<ReturnType<typeof db.heroSlide.findMany>> = [];
+  try {
+    heroSlides = await db.heroSlide.findMany({
+      where: {
+        isActive: true,
+        AND: [
+          { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+          { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+        ],
+      },
+      orderBy: { sortOrder: "asc" },
+    });
+  } catch {
+    // DB unavailable — fall back to static hero component.
+    heroSlides = [];
+  }
 
   const orgJsonLd = {
     "@context": "https://schema.org",

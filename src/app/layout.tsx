@@ -52,6 +52,12 @@ export const metadata: Metadata = {
   },
 };
 
+// Force all pages to render dynamically at runtime (not prerendered at build).
+// This allows the build to succeed without a database connection — pages
+// query the DB at request time instead. Essential for Vercel Preview
+// deployments where the DB might not be available during the build step.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{

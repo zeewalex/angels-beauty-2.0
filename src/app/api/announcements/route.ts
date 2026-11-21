@@ -22,9 +22,10 @@ export async function GET() {
       }
     }
   } catch {
-    // Fall through to defaults.
+    // DB unavailable — fall through to defaults.
   }
 
+  // Default messages (also used when DB is not configured, e.g. Vercel Preview).
   return NextResponse.json({
     messages: [
       { icon: "truck", text: "Free Shipping on Orders Over $50" },
