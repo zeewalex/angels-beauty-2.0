@@ -1,4 +1,4 @@
-# Angels Beauty Shop 2.0
+# Angels Beauty 2.0
 
 Premium skincare, makeup, and beauty essentials e-commerce platform built with Next.js 16, TypeScript, Tailwind CSS, Prisma (PostgreSQL), and shadcn/ui.
 
